@@ -16,7 +16,7 @@ export default defineConfig({
   splitting: false,
   treeshake: true,
   minify: false,
-  external: ["@noble/curves", "@noble/hashes", "react"],
+  external: ["@noble/curves", "@noble/hashes", "react", "ethers"],
   platform: "browser",
   target: "es2020",
 });
