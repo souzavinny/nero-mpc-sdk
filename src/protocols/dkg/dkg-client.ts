@@ -366,7 +366,10 @@ export class DKGClient {
 				}
 			}
 
-			if (result.ready || shares.size >= (this.state?.participantCount ?? 1) - 1) {
+			if (
+				result.ready ||
+				shares.size >= (this.state?.participantCount ?? 1) - 1
+			) {
 				return shares;
 			}
 
