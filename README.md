@@ -1,17 +1,17 @@
-# @nero-network/mpc-sdk
+# @nerochain/mpc-sdk
 
 Browser-based threshold signature client for self-custodial wallets. Uses MPC-TSS (Multi-Party Computation Threshold Signature Schemes) to generate and manage Ethereum wallets from social logins.
 
 ## Installation
 
 ```bash
-npm install @nero-network/mpc-sdk
+npm install @nerochain/mpc-sdk
 ```
 
 ## Quick Start
 
 ```typescript
-import { NeroMpcSDK } from "@nero-network/mpc-sdk";
+import { NeroMpcSDK } from "@nerochain/mpc-sdk";
 
 const sdk = new NeroMpcSDK({
   backendUrl: "https://your-api.example.com",
@@ -28,7 +28,7 @@ const signature = await sdk.signMessage("Hello NERO");
 ## React Integration
 
 ```tsx
-import { NeroMpcAuthProvider, useNeroConnect, useNeroUser } from "@nero-network/mpc-sdk/react";
+import { NeroMpcAuthProvider, useNeroConnect, useNeroUser } from "@nerochain/mpc-sdk/react";
 
 function App() {
   return (
@@ -56,12 +56,12 @@ function Wallet() {
 
 | Export | Import Path | Description |
 |--------|------------|-------------|
-| Core SDK | `@nero-network/mpc-sdk` | Main SDK class, wallet operations, transport |
-| React | `@nero-network/mpc-sdk/react` | Provider, hooks, theme context |
-| Modal | `@nero-network/mpc-sdk/modal` | Pre-built login modal UI |
-| No Modal | `@nero-network/mpc-sdk/no-modal` | Headless SDK for custom UI |
-| Chains | `@nero-network/mpc-sdk/chains` | Chain configurations and manager |
-| Account Abstraction | `@nero-network/mpc-sdk/aa` | ERC-4337 smart account support |
+| Core SDK | `@nerochain/mpc-sdk` | Main SDK class, wallet operations, transport |
+| React | `@nerochain/mpc-sdk/react` | Provider, hooks, theme context |
+| Modal | `@nerochain/mpc-sdk/modal` | Pre-built login modal UI |
+| No Modal | `@nerochain/mpc-sdk/no-modal` | Headless SDK for custom UI |
+| Chains | `@nerochain/mpc-sdk/chains` | Chain configurations and manager |
+| Account Abstraction | `@nerochain/mpc-sdk/aa` | ERC-4337 smart account support |
 
 ## Features
 
