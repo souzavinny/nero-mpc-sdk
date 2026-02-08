@@ -1,0 +1,122 @@
+{
+  "name": "@nero-network/mpc-sdk",
+  "version": "0.1.0",
+  "description": "NERO MPC SDK - Browser-based threshold signature client for self-custodial wallets",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.mjs",
+      "require": "./dist/react.js"
+    },
+    "./chains": {
+      "types": "./dist/chains.d.ts",
+      "import": "./dist/chains.mjs",
+      "require": "./dist/chains.js"
+    },
+    "./modal": {
+      "types": "./dist/modal.d.ts",
+      "import": "./dist/modal.mjs",
+      "require": "./dist/modal.js"
+    },
+    "./no-modal": {
+      "types": "./dist/no-modal.d.ts",
+      "import": "./dist/no-modal.mjs",
+      "require": "./dist/no-modal.js"
+    },
+    "./aa": {
+      "types": "./dist/aa.d.ts",
+      "import": "./dist/aa.mjs",
+      "require": "./dist/aa.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "type-check": "tsc --noEmit",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --apply src/",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "mpc",
+    "threshold-signatures",
+    "wallet",
+    "ethereum",
+    "web3",
+    "account-abstraction",
+    "erc-4337",
+    "react",
+    "nero-chain"
+  ],
+  "author": "NERO Network",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/souzavinny/nero-mpc-sdk.git"
+  },
+  "homepage": "https://github.com/souzavinny/nero-mpc-sdk",
+  "bugs": {
+    "url": "https://github.com/souzavinny/nero-mpc-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@coinbase/wallet-sdk": "^4.0.0",
+    "@metamask/sdk": "^0.20.0",
+    "@noble/curves": "^1.4.0",
+    "@noble/hashes": "^1.4.0",
+    "@walletconnect/ethereum-provider": "^2.0.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@walletconnect/ethereum-provider": {
+      "optional": true
+    },
+    "@metamask/sdk": {
+      "optional": true
+    },
+    "@coinbase/wallet-sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@noble/curves": "^1.4.0",
+    "@noble/hashes": "^1.4.0",
+    "@testing-library/react": "^14.3.1",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^27.4.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.1",
+    "tsup": "^8.1.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "browser": {
+    "crypto": false
+  }
+}
