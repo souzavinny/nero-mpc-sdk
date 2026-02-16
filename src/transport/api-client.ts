@@ -1,7 +1,12 @@
 import type {
 	AuthTokens,
+	CustomLoginOptions,
 	DeviceFingerprint,
+	OAuthProviderInfo,
 	SDKConfig,
+	SessionReconnectResult,
+	SessionStatus,
+	SocialLoginResponse,
 	User,
 	WalletInfo,
 } from "../types";
@@ -146,7 +151,7 @@ export class APIClient {
 	}
 
 	async getOAuthUrl(
-		provider: "google" | "github" | "apple",
+		provider: string,
 		redirectUri: string,
 	): Promise<{ url: string; state: string }> {
 		const data = await this.request<{
@@ -154,7 +159,7 @@ export class APIClient {
 			state: string;
 		}>(
 			"GET",
-			`/api/v1/auth/oauth-url/${provider}?redirectUri=${encodeURIComponent(redirectUri)}`,
+			`/api/v2/auth/oauth-url/${provider}?redirectUri=${encodeURIComponent(redirectUri)}`,
 			undefined,
 			false,
 		);
@@ -173,25 +178,9 @@ export class APIClient {
 		wallet?: WalletInfo;
 		requiresDKG: boolean;
 	}> {
-		const result = await this.request<{
-			user: User;
-			tokens: {
-				accessToken: string;
-				refreshToken: string;
-				expiresIn: number;
-			};
-			isFirstLogin: boolean;
-			wallet?: {
-				walletAddress?: string;
-				requiresKeyGeneration: boolean;
-				keyGenSessionId?: string;
-				status?: string;
-				expiresAt?: string;
-				error?: string;
-			};
-		}>(
+		const result = await this.request<SocialLoginResponse>(
 			"POST",
-			"/api/v1/auth/social-login",
+			"/api/v2/auth/social-login",
 			{
 				provider,
 				code,
@@ -206,6 +195,7 @@ export class APIClient {
 			accessToken: result.tokens.accessToken,
 			refreshToken: result.tokens.refreshToken,
 			expiresAt: Date.now() + result.tokens.expiresIn * 1000,
+			dappShare: result.dappShare,
 		};
 
 		const requiresDKG =
@@ -227,13 +217,201 @@ export class APIClient {
 	}
 
 	async getCurrentUser(): Promise<User> {
-		const result = await this.request<{ user: User }>("GET", "/api/v1/auth/me");
+		const result = await this.request<{ user: User }>("GET", "/api/v2/auth/me");
 		return result.user;
 	}
 
 	async logout(): Promise<void> {
-		await this.request("POST", "/api/v1/auth/logout");
+		await this.request("POST", "/api/v2/auth/logout");
 		this.tokens = null;
+	}
+
+	// Auth v2 methods
+
+	async getOAuthProviders(): Promise<OAuthProviderInfo[]> {
+		const result = await this.request<{
+			providers: OAuthProviderInfo[];
+		}>("GET", "/api/v2/auth/providers", undefined, false);
+		return result.providers;
+	}
+
+	async sendEmailAuth(
+		email: string,
+		type: "otp" | "magic_link" = "otp",
+	): Promise<{ message: string; expiresInMinutes: number }> {
+		return this.request(
+			"POST",
+			"/api/v2/auth/email/send",
+			{ email, type },
+			false,
+		);
+	}
+
+	async verifyEmailAuth(
+		email: string,
+		code: string,
+		options?: { deviceId?: string; deviceName?: string },
+	): Promise<{
+		user: User;
+		tokens: AuthTokens;
+		requiresDKG: boolean;
+	}> {
+		const result = await this.request<SocialLoginResponse>(
+			"POST",
+			"/api/v2/auth/email/verify",
+			{ email, code, ...options },
+			false,
+		);
+
+		this.tokens = {
+			accessToken: result.tokens.accessToken,
+			refreshToken: result.tokens.refreshToken,
+			expiresAt: Date.now() + result.tokens.expiresIn * 1000,
+			dappShare: result.dappShare,
+		};
+
+		const requiresDKG =
+			result.wallet?.requiresKeyGeneration === true &&
+			!result.wallet?.walletAddress;
+
+		return { user: result.user, tokens: this.tokens, requiresDKG };
+	}
+
+	async sendPhoneOTP(
+		phoneNumber: string,
+	): Promise<{ message: string; expiresInMinutes: number }> {
+		return this.request(
+			"POST",
+			"/api/v2/auth/phone/send",
+			{ phoneNumber },
+			false,
+		);
+	}
+
+	async verifyPhoneOTP(
+		phoneNumber: string,
+		code: string,
+		options?: { deviceId?: string; deviceName?: string },
+	): Promise<{
+		user: User;
+		tokens: AuthTokens;
+		requiresDKG: boolean;
+	}> {
+		const result = await this.request<SocialLoginResponse>(
+			"POST",
+			"/api/v2/auth/phone/verify",
+			{ phoneNumber, code, ...options },
+			false,
+		);
+
+		this.tokens = {
+			accessToken: result.tokens.accessToken,
+			refreshToken: result.tokens.refreshToken,
+			expiresAt: Date.now() + result.tokens.expiresIn * 1000,
+			dappShare: result.dappShare,
+		};
+
+		const requiresDKG =
+			result.wallet?.requiresKeyGeneration === true &&
+			!result.wallet?.walletAddress;
+
+		return { user: result.user, tokens: this.tokens, requiresDKG };
+	}
+
+	async customLogin(options: CustomLoginOptions): Promise<{
+		user: User;
+		tokens: AuthTokens;
+		requiresDKG: boolean;
+	}> {
+		const result = await this.request<SocialLoginResponse>(
+			"POST",
+			"/api/v2/auth/custom-login",
+			{
+				verifier_id: options.verifierId,
+				id_token: options.idToken,
+				deviceId: options.deviceId,
+				deviceName: options.deviceName,
+				skipWalletGeneration: options.skipWalletGeneration,
+			},
+			false,
+		);
+
+		this.tokens = {
+			accessToken: result.tokens.accessToken,
+			refreshToken: result.tokens.refreshToken,
+			expiresAt: Date.now() + result.tokens.expiresIn * 1000,
+			dappShare: result.dappShare,
+		};
+
+		const requiresDKG =
+			result.wallet?.requiresKeyGeneration === true &&
+			!result.wallet?.walletAddress;
+
+		return { user: result.user, tokens: this.tokens, requiresDKG };
+	}
+
+	// Session methods
+
+	async sessionRefresh(
+		refreshToken: string,
+		deviceId?: string,
+	): Promise<{ tokens: AuthTokens; sessionLifetime: number }> {
+		const result = await this.request<{
+			tokens: {
+				accessToken: string;
+				refreshToken: string;
+				expiresIn: number;
+			};
+			sessionLifetime: number;
+		}>("POST", "/api/v2/session/refresh", { refreshToken, deviceId }, false);
+
+		this.tokens = {
+			accessToken: result.tokens.accessToken,
+			refreshToken: result.tokens.refreshToken,
+			expiresAt: Date.now() + result.tokens.expiresIn * 1000,
+		};
+
+		return { tokens: this.tokens, sessionLifetime: result.sessionLifetime };
+	}
+
+	async sessionStatus(): Promise<SessionStatus> {
+		return this.request("GET", "/api/v2/session/status");
+	}
+
+	async sessionReconnect(
+		dappShare: string,
+		deviceId?: string,
+	): Promise<SessionReconnectResult> {
+		const result = await this.request<{
+			user: User;
+			tokens: {
+				accessToken: string;
+				refreshToken: string;
+				expiresIn: number;
+			};
+			sessionLifetime: number;
+		}>(
+			"POST",
+			"/api/v2/session/reconnect",
+			{ dapp_share: dappShare, device_id: deviceId },
+			false,
+		);
+
+		this.tokens = {
+			accessToken: result.tokens.accessToken,
+			refreshToken: result.tokens.refreshToken,
+			expiresAt: Date.now() + result.tokens.expiresIn * 1000,
+		};
+
+		return {
+			user: result.user,
+			tokens: this.tokens,
+			sessionLifetime: result.sessionLifetime,
+		};
+	}
+
+	async sessionRevoke(): Promise<{ message: string }> {
+		return this.request("POST", "/api/v2/session/revoke");
 	}
 
 	async initiateDKG(): Promise<{

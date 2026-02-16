@@ -6,3 +6,7 @@ export {
 } from "./useNeroDisconnect";
 export { useNeroUser, type UseNeroUserReturn } from "./useNeroUser";
 export { useNeroWallet, type UseNeroWalletReturn } from "./useNeroWallet";
+export {
+	useNeroSession,
+	type UseNeroSessionReturn,
+} from "./useNeroSession";

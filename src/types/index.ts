@@ -182,6 +182,52 @@ export interface StorageAdapter {
 	clear(): Promise<void>;
 }
 
+export interface SessionStatus {
+	isValid: boolean;
+	userId: string;
+	sessionLifetime: number;
+	deviceId?: string;
+	projectId?: string;
+}
+
+export interface SessionReconnectResult {
+	user: User;
+	tokens: AuthTokens;
+	sessionLifetime: number;
+}
+
+export interface CustomLoginOptions {
+	verifierId: string;
+	idToken: string;
+	deviceId?: string;
+	deviceName?: string;
+	skipWalletGeneration?: boolean;
+}
+
+export interface OAuthProviderInfo {
+	provider: string;
+	name: string;
+}
+
+export interface SocialLoginResponse {
+	user: User;
+	tokens: {
+		accessToken: string;
+		refreshToken: string;
+		expiresIn: number;
+	};
+	isFirstLogin: boolean;
+	wallet?: {
+		walletAddress?: string;
+		keyGenSessionId?: string;
+		requiresKeyGeneration: boolean;
+		status?: string;
+		expiresAt?: string;
+		error?: string;
+	};
+	dappShare?: string;
+}
+
 export class SDKError extends Error {
 	constructor(
 		message: string,

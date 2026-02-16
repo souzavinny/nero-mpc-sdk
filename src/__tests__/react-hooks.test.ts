@@ -24,10 +24,18 @@ const createMockSDK = (overrides = {}) => ({
 	loginWithGoogle: vi.fn().mockResolvedValue(undefined),
 	loginWithGithub: vi.fn().mockResolvedValue(undefined),
 	loginWithApple: vi.fn().mockResolvedValue(undefined),
+	loginWithOAuth: vi.fn().mockResolvedValue(undefined),
+	loginWithEmail: vi.fn().mockResolvedValue({ message: "sent", expiresInMinutes: 10 }),
+	verifyEmailLogin: vi.fn().mockResolvedValue({ user: { id: "user-123" }, requiresDKG: false }),
+	loginWithPhone: vi.fn().mockResolvedValue({ message: "sent", expiresInMinutes: 10 }),
+	verifyPhoneLogin: vi.fn().mockResolvedValue({ user: { id: "user-123" }, requiresDKG: false }),
+	loginWithCustomJwt: vi.fn().mockResolvedValue({ user: { id: "user-123" }, requiresDKG: false }),
 	handleOAuthCallback: vi.fn().mockResolvedValue({
 		user: { id: "user-123", email: "test@example.com" },
 		requiresDKG: false,
 	}),
+	getSessionStatus: vi.fn().mockResolvedValue({ isValid: true, userId: "user-123", sessionLifetime: 3600 }),
+	reconnectSession: vi.fn().mockResolvedValue({ user: { id: "user-123" }, tokens: {}, sessionLifetime: 3600 }),
 	logout: vi.fn().mockResolvedValue(undefined),
 	generateWallet: vi.fn().mockResolvedValue({
 		address: "0x1234567890abcdef1234567890abcdef12345678",
@@ -146,7 +154,7 @@ describe("React Hooks", () => {
 			vi.mocked(NeroMpcSDK).mockImplementation(
 				() =>
 					createMockSDK({
-						loginWithGoogle: vi.fn().mockReturnValue(connectPromise),
+						loginWithOAuth: vi.fn().mockReturnValue(connectPromise),
 					}) as any,
 			);
 

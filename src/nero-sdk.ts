@@ -15,8 +15,11 @@ import { APIClient } from "./transport/api-client";
 import { WebSocketClient } from "./transport/websocket-client";
 import type {
 	AuthTokens,
+	CustomLoginOptions,
 	DeviceFingerprint,
 	SDKConfig,
+	SessionReconnectResult,
+	SessionStatus,
 	StorageAdapter,
 	User,
 	WalletInfo,
@@ -24,7 +27,16 @@ import type {
 import { SDKError } from "./types";
 import { SmartWallet } from "./wallet/smart-wallet";
 
-export type OAuthProvider = "google" | "github" | "apple";
+export type OAuthProvider =
+	| "google"
+	| "github"
+	| "apple"
+	| "discord"
+	| "line"
+	| "linkedin"
+	| "twitter"
+	| "wechat"
+	| "facebook";
 export type LoginProvider = OAuthProvider;
 
 export interface NeroSDKState {
@@ -246,6 +258,111 @@ export class NeroMpcSDK {
 		window.location.href = url;
 	}
 
+	async loginWithOAuth(
+		provider: OAuthProvider,
+		redirectUri?: string,
+	): Promise<void> {
+		const { url } = await this.getOAuthUrl(
+			provider,
+			redirectUri ?? window.location.href,
+		);
+		window.location.href = url;
+	}
+
+	async loginWithEmail(
+		email: string,
+		type: "otp" | "magic_link" = "otp",
+	): Promise<{ message: string; expiresInMinutes: number }> {
+		return this.apiClient.sendEmailAuth(email, type);
+	}
+
+	async verifyEmailLogin(
+		email: string,
+		code: string,
+	): Promise<{ user: User; requiresDKG: boolean }> {
+		const result = await this.apiClient.verifyEmailAuth(email, code);
+		this._user = result.user;
+		this.storeTokens(result.tokens);
+
+		if (this.keyManager && this._user) {
+			await this.keyManager.initialize(this._user.id);
+		}
+
+		if (!result.requiresDKG) {
+			await this.initializeWallet();
+		}
+
+		return { user: result.user, requiresDKG: result.requiresDKG };
+	}
+
+	async loginWithPhone(
+		phoneNumber: string,
+	): Promise<{ message: string; expiresInMinutes: number }> {
+		return this.apiClient.sendPhoneOTP(phoneNumber);
+	}
+
+	async verifyPhoneLogin(
+		phoneNumber: string,
+		code: string,
+	): Promise<{ user: User; requiresDKG: boolean }> {
+		const result = await this.apiClient.verifyPhoneOTP(phoneNumber, code);
+		this._user = result.user;
+		this.storeTokens(result.tokens);
+
+		if (this.keyManager && this._user) {
+			await this.keyManager.initialize(this._user.id);
+		}
+
+		if (!result.requiresDKG) {
+			await this.initializeWallet();
+		}
+
+		return { user: result.user, requiresDKG: result.requiresDKG };
+	}
+
+	async loginWithCustomJwt(
+		options: CustomLoginOptions,
+	): Promise<{ user: User; requiresDKG: boolean }> {
+		const result = await this.apiClient.customLogin(options);
+		this._user = result.user;
+		this.storeTokens(result.tokens);
+
+		if (this.keyManager && this._user) {
+			await this.keyManager.initialize(this._user.id);
+		}
+
+		if (!result.requiresDKG) {
+			await this.initializeWallet();
+		}
+
+		return { user: result.user, requiresDKG: result.requiresDKG };
+	}
+
+	async getSessionStatus(): Promise<SessionStatus> {
+		return this.apiClient.sessionStatus();
+	}
+
+	async reconnectSession(dappShare?: string): Promise<SessionReconnectResult> {
+		const share = dappShare ?? this.loadStoredTokens()?.dappShare;
+		if (!share) {
+			throw new SDKError(
+				"No dApp share available for reconnect",
+				"NO_DAPP_SHARE",
+			);
+		}
+
+		const result = await this.apiClient.sessionReconnect(share);
+		this._user = result.user;
+		this.storeTokens(result.tokens);
+
+		if (this.keyManager && this._user) {
+			await this.keyManager.initialize(this._user.id);
+		}
+
+		await this.initializeWallet();
+		return result;
+	}
+
 	async generateWallet(): Promise<WalletInfo> {
 		if (!this._user) {
 			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
@@ -337,6 +454,10 @@ export class NeroMpcSDK {
 
 	async logout(): Promise<void> {
 		try {
+			const tokens = this.apiClient.getTokens();
+			if (tokens?.dappShare) {
+				await this.apiClient.sessionRevoke();
+			}
 			await this.apiClient.logout();
 		} catch {}
 
@@ -405,6 +526,7 @@ export class NeroMpcSDK {
 	getUserInfo(): UserInfo | null {
 		if (!this._user) return null;
 
+		const tokens = this.apiClient.getTokens();
 		return {
 			email: this._user.email,
 			name: this._user.displayName,
@@ -412,6 +534,7 @@ export class NeroMpcSDK {
 			verifier: "nero-mpc",
 			verifierId: this._user.id,
 			typeOfLogin: "social",
+			dappShare: tokens?.dappShare,
 		};
 	}
 
