@@ -113,6 +113,8 @@ export interface UIConfig {
 
 export interface SDKConfig {
 	backendUrl: string;
+	apiKey?: string;
+	deviceId?: string;
 	chainId?: number;
 	wsUrl?: string;
 	storagePrefix?: string;
@@ -127,6 +129,7 @@ export interface AuthTokens {
 	accessToken: string;
 	refreshToken: string;
 	expiresAt: number;
+	dappShare?: string;
 }
 
 export interface User {

@@ -18,11 +18,19 @@ interface APIResponse<T> {
 
 export class APIClient {
 	private baseUrl: string;
+	private apiKey: string | undefined;
+	private deviceId: string | undefined;
 	private tokens: AuthTokens | null = null;
 	private refreshPromise: Promise<void> | null = null;
 
 	constructor(config: SDKConfig) {
 		this.baseUrl = config.backendUrl.replace(/\/$/, "");
+		this.apiKey = config.apiKey;
+		this.deviceId = config.deviceId;
+	}
+
+	setDeviceId(deviceId: string): void {
+		this.deviceId = deviceId;
 	}
 
 	setTokens(tokens: AuthTokens): void {
@@ -52,6 +60,14 @@ export class APIClient {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
 		};
+
+		if (this.apiKey) {
+			headers["X-API-Key"] = this.apiKey;
+		}
+
+		if (this.deviceId) {
+			headers["X-Device-Id"] = this.deviceId;
+		}
 
 		if (requiresAuth && this.tokens) {
 			headers.Authorization = `Bearer ${this.tokens.accessToken}`;
@@ -87,9 +103,16 @@ export class APIClient {
 				throw new SDKError("No refresh token available", "NO_REFRESH_TOKEN");
 			}
 
-			const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
+			const refreshHeaders: Record<string, string> = {
+				"Content-Type": "application/json",
+			};
+			if (this.apiKey) {
+				refreshHeaders["X-API-Key"] = this.apiKey;
+			}
+
+			const response = await fetch(`${this.baseUrl}/api/v2/session/refresh`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: refreshHeaders,
 				body: JSON.stringify({
 					refreshToken: this.tokens.refreshToken,
 				}),

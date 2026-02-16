@@ -151,6 +151,11 @@ export class NeroMpcSDK {
 
 	async initialize(): Promise<void> {
 		this.deviceKey = this.loadOrGenerateDeviceKey();
+
+		if (!this.config.deviceId) {
+			this.apiClient.setDeviceId(this.deviceKey);
+		}
+
 		this.keyManager = new ClientKeyManager(this.deviceKey, {
 			storagePrefix: this.config.storagePrefix,
 		});
