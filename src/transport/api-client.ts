@@ -414,6 +414,137 @@ export class APIClient {
 		return this.request("POST", "/api/v2/session/revoke");
 	}
 
+	// DKG v2 methods (synchronous 3-step flow)
+
+	async dkgInitiate(
+		threshold?: number,
+		totalParties?: number,
+	): Promise<{
+		sessionId: string;
+		backendCommitment: {
+			partyId: number;
+			commitments: string[];
+			publicKey: string;
+			proofOfKnowledge: string;
+		};
+		ephemeralPublicKey: string;
+		message: string;
+	}> {
+		return this.request("POST", "/api/v2/dkg/initiate", {
+			threshold,
+			totalParties,
+		});
+	}
+
+	async dkgSubmitCommitment(
+		sessionId: string,
+		clientCommitment: {
+			partyId: number;
+			commitments: string[];
+			publicKey: string;
+			proofOfKnowledge: string;
+		},
+	): Promise<{
+		sessionId: string;
+		backendShareForClient: {
+			fromPartyId: number;
+			toPartyId: number;
+			ephemeralPublicKey: string;
+			ciphertext: string;
+			nonce: string;
+			tag: string;
+		};
+		message: string;
+	}> {
+		return this.request("POST", "/api/v2/dkg/commitment", {
+			sessionId,
+			clientCommitment,
+		});
+	}
+
+	async dkgSubmitShare(
+		sessionId: string,
+		clientShare: {
+			fromPartyId: number;
+			toPartyId: number;
+			ephemeralPublicKey: string;
+			ciphertext: string;
+			nonce: string;
+			tag: string;
+		},
+	): Promise<{
+		sessionId: string;
+		publicKey: string;
+		walletAddress: string;
+		partyId: number;
+		message: string;
+	}> {
+		return this.request("POST", "/api/v2/dkg/share", {
+			sessionId,
+			clientShare,
+		});
+	}
+
+	async dkgGetSession(sessionId: string): Promise<{
+		sessionId: string;
+		status: string;
+		threshold: number;
+		totalParties: number;
+		result: {
+			publicKey: string;
+			walletAddress: string;
+			partyId: number;
+		} | null;
+		error: string | null;
+		createdAt: string;
+		completedAt: string | null;
+	}> {
+		return this.request("GET", `/api/v2/dkg/${sessionId}`);
+	}
+
+	async dkgCancel(sessionId: string): Promise<{
+		sessionId: string;
+		message: string;
+	}> {
+		return this.request("DELETE", `/api/v2/dkg/${sessionId}`);
+	}
+
+	// Wallet v2 methods
+
+	async getWalletInfoV2(): Promise<{
+		wallet: {
+			address: string | null;
+			hasWallet: boolean;
+			createdAt: string;
+		};
+		mpc: {
+			threshold: number;
+			totalParties: number;
+			activeParties: number;
+			securityLevel: string;
+			protocolVersion: string;
+		};
+		signing: {
+			supported: string[];
+		};
+	}> {
+		return this.request("GET", "/api/v2/wallet/info");
+	}
+
+	async listWallets(): Promise<{
+		wallets: Array<{
+			projectId: string;
+			walletAddress: string;
+			createdAt: string;
+			mpcMode: string;
+			thresholdMode: string;
+		}>;
+		count: number;
+	}> {
+		return this.request("GET", "/api/v2/wallet/list");
+	}
+
+	/** @deprecated Use dkgInitiate() for v2 synchronous 3-step DKG flow */
 	async initiateDKG(): Promise<{
 		sessionId: string;
 		partyId: number;
@@ -569,7 +700,7 @@ export class APIClient {
 	}
 
 	async getWalletInfo(): Promise<WalletInfo> {
-		return this.request("GET", "/api/v1/wallet/info");
+		return this.request("GET", "/api/v2/wallet/info");
 	}
 
 	async getPartyPublicShares(): Promise<{

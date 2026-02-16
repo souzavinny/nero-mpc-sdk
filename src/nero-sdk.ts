@@ -363,6 +363,19 @@ export class NeroMpcSDK {
 		return result;
 	}
 
+	async listWallets(): Promise<{
+		wallets: Array<{
+			projectId: string;
+			walletAddress: string;
+			createdAt: string;
+			mpcMode: string;
+			thresholdMode: string;
+		}>;
+		count: number;
+	}> {
+		return this.apiClient.listWallets();
+	}
+
 	async generateWallet(): Promise<WalletInfo> {
 		if (!this._user) {
 			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");

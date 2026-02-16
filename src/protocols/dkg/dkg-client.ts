@@ -1,5 +1,4 @@
 import { secp256k1 } from "@noble/curves/secp256k1";
-import { keccak_256 } from "@noble/hashes/sha3";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import type { APIClient } from "../../transport/api-client";
@@ -20,13 +19,12 @@ import {
 	scalarToHex,
 } from "./polynomial";
 import {
-	type EncryptedShare,
 	decryptShare,
 	encryptShare,
 	generateEphemeralKeyPair,
 } from "./share-exchange";
 
-const PROTOCOL_VERSION = "pedersen-dkg-v1";
+const PROTOCOL_VERSION = "pedersen-dkg-v2";
 
 export interface DKGClientConfig {
 	apiClient: APIClient;
@@ -36,8 +34,6 @@ export interface DKGClientConfig {
 
 export class DKGClient {
 	private apiClient: APIClient;
-	private wsClient?: WebSocketClient;
-	private timeout: number;
 	private state: DKGSessionState | null = null;
 
 	private polynomial: bigint[] = [];
@@ -48,21 +44,128 @@ export class DKGClient {
 
 	constructor(config: DKGClientConfig) {
 		this.apiClient = config.apiClient;
-		this.wsClient = config.wsClient;
-		this.timeout = config.timeout ?? 60000;
 	}
 
 	async execute(): Promise<DKGResult> {
 		try {
-			await this.initializeSession();
+			// Step 1: Initiate — receive backend commitment + ephemeral key
+			const initResult = await this.apiClient.dkgInitiate();
+			const { sessionId, backendCommitment, ephemeralPublicKey } = initResult;
 
-			await this.runCommitmentPhase();
+			const threshold = 2;
+			const participantCount = 2;
+			const partyId = 1;
 
-			await this.runShareExchangePhase();
+			this.state = {
+				sessionId,
+				round: "commitment",
+				partyId,
+				participantCount,
+				threshold,
+				commitments: new Map(),
+				receivedShares: new Map(),
+			};
 
-			await this.runVerificationPhase();
+			this.polynomial = generatePolynomial(threshold - 1);
+			this.ephemeralKeyPair = generateEphemeralKeyPair();
 
-			return await this.completeProtocol();
+			// Verify backend's proof of knowledge
+			if (
+				!verifyProofOfKnowledge(
+					backendCommitment.proofOfKnowledge,
+					backendCommitment.partyId,
+					backendCommitment.commitments[0],
+				)
+			) {
+				throw new SDKError(
+					"Invalid proof of knowledge from backend",
+					"INVALID_COMMITMENT_PROOF",
+				);
+			}
+
+			this.receivedCommitments.set(backendCommitment.partyId, {
+				partyId: backendCommitment.partyId,
+				coefficientCommitments: backendCommitment.commitments,
+				proofOfKnowledge: backendCommitment.proofOfKnowledge,
+			});
+
+			// Step 2: Submit client commitment — receive backend's encrypted share
+			const clientCommitment = createVSSSCommitments(partyId, this.polynomial);
+			this.receivedCommitments.set(partyId, clientCommitment);
+
+			const commitResult = await this.apiClient.dkgSubmitCommitment(sessionId, {
+				partyId,
+				commitments: clientCommitment.coefficientCommitments,
+				publicKey: this.ephemeralKeyPair.publicKey,
+				proofOfKnowledge: clientCommitment.proofOfKnowledge,
+			});
+
+			// Decrypt backend's share
+			const backendShare = commitResult.backendShareForClient;
+			const decrypted = await decryptShare(
+				{
+					fromPartyId: backendShare.fromPartyId,
+					toPartyId: backendShare.toPartyId,
+					ephemeralPublicKey: backendShare.ephemeralPublicKey,
+					ciphertext: backendShare.ciphertext,
+					nonce: backendShare.nonce,
+					tag: backendShare.tag,
+				},
+				this.ephemeralKeyPair.privateKey,
+			);
+
+			const backendVsss = this.receivedCommitments.get(
+				backendCommitment.partyId,
+			);
+			if (
+				backendVsss &&
+				!verifyVSSSCommitment(backendVsss, decrypted.share, partyId)
+			) {
+				throw new SDKError("Invalid share from backend", "INVALID_SHARE");
+			}
+
+			this.receivedShares.set(backendCommitment.partyId, decrypted.share);
+
+			// Evaluate own share and aggregate
+			const ownShare = evaluatePolynomial(this.polynomial, BigInt(partyId));
+			this.receivedShares.set(partyId, ownShare);
+
+			// Step 3: Encrypt client's share for backend and submit
+			const shareForBackend = evaluatePolynomial(
+				this.polynomial,
+				BigInt(backendCommitment.partyId),
+			);
+			const encrypted = await encryptShare(
+				shareForBackend,
+				partyId,
+				backendCommitment.partyId,
+				ephemeralPublicKey,
+			);
+
+			const shareResult = await this.apiClient.dkgSubmitShare(sessionId, {
+				fromPartyId: partyId,
+				toPartyId: backendCommitment.partyId,
+				ephemeralPublicKey: encrypted.ephemeralPublicKey,
+				ciphertext: encrypted.ciphertext,
+				nonce: encrypted.nonce,
+				tag: encrypted.tag,
+			});
+
+			// Finalize: compute final share and public key
+			const finalShare = aggregateShares(this.receivedShares, 0n);
+			const allCommitments = Array.from(this.receivedCommitments.values());
+			const publicKey = combineVSSSCommitments(allCommitments);
+
+			this.state.privateShare = finalShare;
+			this.state.publicKey = publicKey;
+			this.state.round = "complete";
+
+			return {
+				success: true,
+				publicKey,
+				walletAddress: shareResult.walletAddress,
+				partyId,
+			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "DKG failed";
 			return {
@@ -70,221 +173,6 @@ export class DKGClient {
 				error: message,
 			};
 		}
-	}
-
-	private async initializeSession(): Promise<void> {
-		const { sessionId, partyId, participantCount, threshold } =
-			await this.apiClient.initiateDKG();
-
-		if (threshold < 2) {
-			throw new SDKError(
-				"Threshold must be at least 2 for security",
-				"INVALID_THRESHOLD",
-			);
-		}
-		if (participantCount < 2) {
-			throw new SDKError(
-				"Participant count must be at least 2",
-				"INVALID_PARTICIPANT_COUNT",
-			);
-		}
-		if (threshold > participantCount) {
-			throw new SDKError(
-				"Threshold cannot exceed participant count",
-				"INVALID_THRESHOLD",
-			);
-		}
-
-		this.state = {
-			sessionId,
-			round: "commitment",
-			partyId,
-			participantCount,
-			threshold,
-			commitments: new Map(),
-			receivedShares: new Map(),
-		};
-
-		this.polynomial = generatePolynomial(threshold - 1);
-
-		this.ephemeralKeyPair = generateEphemeralKeyPair();
-
-		if (this.wsClient) {
-			await this.wsClient.connect();
-			this.wsClient.setAccessToken(
-				this.apiClient.getTokens()?.accessToken ?? "",
-			);
-		}
-	}
-
-	private async runCommitmentPhase(): Promise<void> {
-		if (!this.state) throw new SDKError("State not initialized", "STATE_ERROR");
-
-		const commitment = createVSSSCommitments(
-			this.state.partyId,
-			this.polynomial,
-		);
-
-		const apiCommitment = {
-			partyId: this.state.partyId,
-			commitments: commitment.coefficientCommitments,
-			publicKey: this.ephemeralKeyPair?.publicKey ?? "",
-			proofOfKnowledge: commitment.proofOfKnowledge,
-		};
-
-		await this.apiClient.submitDKGCommitment(
-			this.state.sessionId,
-			apiCommitment,
-		);
-
-		this.receivedCommitments.set(this.state.partyId, commitment);
-
-		const otherCommitments = await this.waitForCommitments();
-
-		for (const [partyId, comm] of otherCommitments) {
-			if (!comm.proofOfKnowledge) {
-				throw new SDKError(
-					`Missing proof of knowledge from party ${comm.partyId}. Backend must relay proofs for client-side verification.`,
-					"MISSING_COMMITMENT_PROOF",
-				);
-			}
-			if (comm.partyId !== partyId) {
-				throw new SDKError(
-					`Party ID mismatch: expected ${partyId}, got ${comm.partyId}`,
-					"PARTY_ID_MISMATCH",
-				);
-			}
-			if (
-				!verifyProofOfKnowledge(
-					comm.proofOfKnowledge,
-					comm.partyId,
-					comm.coefficientCommitments[0],
-				)
-			) {
-				throw new SDKError(
-					`Invalid proof of knowledge from party ${comm.partyId}`,
-					"INVALID_COMMITMENT_PROOF",
-				);
-			}
-			this.receivedCommitments.set(comm.partyId, comm);
-		}
-
-		this.state.round = "share_exchange";
-	}
-
-	private async runShareExchangePhase(): Promise<void> {
-		if (!this.state) throw new SDKError("State not initialized", "STATE_ERROR");
-
-		for (let partyId = 1; partyId <= this.state.participantCount; partyId++) {
-			if (partyId === this.state.partyId) continue;
-
-			const share = evaluatePolynomial(this.polynomial, BigInt(partyId));
-
-			const commitment = this.receivedCommitments.get(partyId);
-			if (!commitment) {
-				throw new SDKError(
-					`Missing commitment from party ${partyId}`,
-					"MISSING_COMMITMENT",
-				);
-			}
-
-			const apiCommitment = await this.apiClient.getDKGCommitments(
-				this.state.sessionId,
-			);
-			const partyCommitment = apiCommitment.commitments.find(
-				(c) => c.partyId === partyId,
-			);
-			if (!partyCommitment) {
-				throw new SDKError(
-					`Missing public key from party ${partyId}`,
-					"MISSING_PUBLIC_KEY",
-				);
-			}
-
-			const encrypted = await encryptShare(
-				share,
-				this.state.partyId,
-				partyId,
-				partyCommitment.publicKey,
-			);
-
-			await this.apiClient.submitDKGShare(
-				this.state.sessionId,
-				JSON.stringify(encrypted),
-				partyId,
-			);
-		}
-
-		const ownShare = evaluatePolynomial(
-			this.polynomial,
-			BigInt(this.state.partyId),
-		);
-		this.receivedShares.set(this.state.partyId, ownShare);
-
-		const receivedShares = await this.waitForShares();
-
-		for (const [partyId, encryptedShare] of receivedShares) {
-			const decrypted = await decryptShare(
-				encryptedShare,
-				this.ephemeralKeyPair?.privateKey ?? 0n,
-			);
-
-			const commitment = this.receivedCommitments.get(partyId);
-			if (!commitment) {
-				throw new SDKError(
-					`Missing commitment from party ${partyId}`,
-					"MISSING_COMMITMENT",
-				);
-			}
-
-			if (
-				!verifyVSSSCommitment(commitment, decrypted.share, this.state.partyId)
-			) {
-				throw new SDKError(
-					`Invalid share from party ${partyId}`,
-					"INVALID_SHARE",
-				);
-			}
-
-			this.receivedShares.set(partyId, decrypted.share);
-		}
-
-		this.state.round = "verification";
-	}
-
-	private async runVerificationPhase(): Promise<void> {
-		if (!this.state) throw new SDKError("State not initialized", "STATE_ERROR");
-
-		const finalShare = aggregateShares(this.receivedShares, 0n);
-
-		const allCommitments = Array.from(this.receivedCommitments.values());
-		const publicKey = combineVSSSCommitments(allCommitments);
-
-		this.state.privateShare = finalShare;
-		this.state.publicKey = publicKey;
-		this.state.round = "complete";
-	}
-
-	private async completeProtocol(): Promise<DKGResult> {
-		if (!this.state || !this.state.privateShare || !this.state.publicKey) {
-			throw new SDKError("Protocol not complete", "PROTOCOL_INCOMPLETE");
-		}
-
-		const walletAddress = this.deriveWalletAddress(this.state.publicKey);
-
-		await this.apiClient.completeDKG(
-			this.state.sessionId,
-			this.state.partyId,
-			this.state.publicKey,
-			walletAddress,
-		);
-
-		return {
-			success: true,
-			publicKey: this.state.publicKey,
-			walletAddress,
-			partyId: this.state.partyId,
-		};
 	}
 
 	getKeyShare(): KeyShare | null {
@@ -315,86 +203,9 @@ export class DKGClient {
 		return shares;
 	}
 
-	private async waitForCommitments(): Promise<Map<number, VSSSCommitment>> {
-		const startTime = Date.now();
-		const commitments = new Map<number, VSSSCommitment>();
-
-		while (Date.now() - startTime < this.timeout) {
-			const result = await this.apiClient.getDKGCommitments(
-				this.state?.sessionId ?? "",
-			);
-
-			for (const comm of result.commitments) {
-				if (
-					comm.partyId !== this.state?.partyId &&
-					!commitments.has(comm.partyId)
-				) {
-					commitments.set(comm.partyId, {
-						partyId: comm.partyId,
-						coefficientCommitments: comm.commitments,
-						proofOfKnowledge: comm.proofOfKnowledge ?? "",
-					});
-				}
-			}
-
-			if (
-				result.ready ||
-				commitments.size >= (this.state?.participantCount ?? 1) - 1
-			) {
-				return commitments;
-			}
-
-			await this.delay(1000);
-		}
-
-		throw new SDKError("Timeout waiting for commitments", "COMMITMENT_TIMEOUT");
-	}
-
-	private async waitForShares(): Promise<Map<number, EncryptedShare>> {
-		const startTime = Date.now();
-		const shares = new Map<number, EncryptedShare>();
-
-		while (Date.now() - startTime < this.timeout) {
-			const result = await this.apiClient.getDKGShares(
-				this.state?.sessionId ?? "",
-				this.state?.partyId ?? 0,
-			);
-
-			for (const share of result.shares) {
-				if (!shares.has(share.fromPartyId)) {
-					shares.set(share.fromPartyId, JSON.parse(share.encryptedShare));
-				}
-			}
-
-			if (
-				result.ready ||
-				shares.size >= (this.state?.participantCount ?? 1) - 1
-			) {
-				return shares;
-			}
-
-			await this.delay(1000);
-		}
-
-		throw new SDKError("Timeout waiting for shares", "SHARE_TIMEOUT");
-	}
-
-	private deriveWalletAddress(publicKey: string): string {
-		const pubKeyBytes = hexToBytes(
-			publicKey.startsWith("04") ? publicKey.slice(2) : publicKey,
-		);
-		const hash = keccak_256(pubKeyBytes);
-		const addressBytes = hash.slice(-20);
-		return `0x${bytesToHex(addressBytes)}`;
-	}
-
 	private computeShareCommitment(share: bigint): string {
 		const shareHex = scalarToHex(share);
 		return bytesToHex(sha256(hexToBytes(shareHex)));
-	}
-
-	private delay(ms: number): Promise<void> {
-		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
 	cleanup(): void {
