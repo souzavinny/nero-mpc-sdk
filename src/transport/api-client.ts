@@ -735,6 +735,275 @@ export class APIClient {
 		});
 	}
 
+	// MFA V2 API Methods
+
+	async mfaGetStatus(): Promise<import("../types").MFAStatus> {
+		return this.request("GET", "/api/v2/mfa/status");
+	}
+
+	async mfaTotpSetup(): Promise<import("../types").TOTPSetupResponse> {
+		return this.request("POST", "/api/v2/mfa/totp/setup");
+	}
+
+	async mfaTotpVerifySetup(
+		methodId: string,
+		code: string,
+	): Promise<{
+		methodId: string;
+		methodType: string;
+		backupCodesRemaining: number;
+	}> {
+		return this.request("POST", "/api/v2/mfa/totp/verify-setup", {
+			methodId,
+			code,
+		});
+	}
+
+	async mfaWebAuthnSetup(): Promise<import("../types").WebAuthnSetupResponse> {
+		return this.request("POST", "/api/v2/mfa/webauthn/setup");
+	}
+
+	async mfaWebAuthnVerifySetup(
+		methodId: string,
+		credential: Record<string, unknown>,
+	): Promise<{ methodId: string; methodType: string }> {
+		return this.request("POST", "/api/v2/mfa/webauthn/verify-setup", {
+			methodId,
+			credential,
+		});
+	}
+
+	async mfaCreateChallenge(
+		operation: import("../types").MFAOperationType,
+		methodType?: import("../types").MFAMethodType,
+	): Promise<import("../types").MFAChallenge> {
+		return this.request("POST", "/api/v2/mfa/challenge", {
+			operation,
+			methodType,
+		});
+	}
+
+	async mfaVerifyChallenge(
+		challengeId: string,
+		response: {
+			code?: string;
+			credential?: Record<string, unknown>;
+			backupCode?: string;
+		},
+	): Promise<{
+		verified: boolean;
+		methodId: string;
+		methodType: string;
+		backupCodesRemaining?: number;
+	}> {
+		return this.request("POST", "/api/v2/mfa/verify", {
+			challengeId,
+			...response,
+		});
+	}
+
+	async mfaDisableMethod(methodId: string): Promise<{
+		methodId: string;
+		disabled: boolean;
+	}> {
+		return this.request("DELETE", `/api/v2/mfa/methods/${methodId}`);
+	}
+
+	async mfaRegenerateBackupCodes(methodId: string): Promise<{
+		backupCodes: string[];
+		count: number;
+	}> {
+		return this.request("POST", `/api/v2/mfa/methods/${methodId}/backup-codes`);
+	}
+
+	async mfaUpdatePolicy(
+		policy: import("../types").MFAPolicy,
+	): Promise<Record<string, unknown>> {
+		return this.request("PATCH", "/api/v2/mfa/policy", policy);
+	}
+
+	// User Management V2 API Methods
+
+	async userGetProfile(): Promise<{ profile: import("../types").UserProfile }> {
+		return this.request("GET", "/api/v2/users/profile");
+	}
+
+	async userUpdateProfile(data: {
+		displayName?: string;
+		profilePicture?: string;
+	}): Promise<{ profile: Partial<import("../types").UserProfile> }> {
+		return this.request("PUT", "/api/v2/users/profile", data);
+	}
+
+	async userDeleteAccount(
+		confirmation: string,
+		password?: string,
+	): Promise<{ message: string }> {
+		return this.request("DELETE", "/api/v2/users/profile", {
+			confirmation,
+			password,
+		});
+	}
+
+	async userGetSessions(): Promise<{
+		sessions: unknown[];
+		message?: string;
+	}> {
+		return this.request("GET", "/api/v2/users/sessions");
+	}
+
+	async userRevokeSession(sessionId: string): Promise<void> {
+		return this.request("DELETE", `/api/v2/users/sessions/${sessionId}`);
+	}
+
+	async userRevokeAllSessions(): Promise<void> {
+		return this.request("DELETE", "/api/v2/users/sessions");
+	}
+
+	async userGetDevices(): Promise<{
+		devices: import("../types").TrustedDevice[];
+	}> {
+		return this.request("GET", "/api/v2/users/devices");
+	}
+
+	async userInitiateDeviceVerification(deviceName?: string): Promise<{
+		verificationId: string;
+		expiresAt: string;
+		emailSent: string;
+		message: string;
+	}> {
+		return this.request("POST", "/api/v2/users/devices/verify/initiate", {
+			deviceName,
+		});
+	}
+
+	async userCompleteDeviceVerification(
+		verificationId: string,
+		code: string,
+	): Promise<{
+		deviceId: string;
+		trustLevel: string;
+		message: string;
+	}> {
+		return this.request("POST", "/api/v2/users/devices/verify/complete", {
+			verificationId,
+			code,
+		});
+	}
+
+	async userTrustDevice(
+		deviceId: string,
+		deviceName?: string,
+	): Promise<{ deviceId: string; message: string }> {
+		return this.request("POST", `/api/v2/users/devices/${deviceId}/trust`, {
+			deviceName,
+		});
+	}
+
+	async userRemoveDevice(
+		deviceId: string,
+	): Promise<{ deviceId: string; message: string }> {
+		return this.request("DELETE", `/api/v2/users/devices/${deviceId}`);
+	}
+
+	async userGetSecurity(): Promise<{
+		securitySettings: import("../types").SecuritySettings;
+	}> {
+		return this.request("GET", "/api/v2/users/security");
+	}
+
+	async userUpdateSecurity(
+		settings: Record<string, unknown>,
+	): Promise<Record<string, unknown>> {
+		return this.request("PUT", "/api/v2/users/security", settings);
+	}
+
+	async userChangePassword(
+		currentPassword: string,
+		newPassword: string,
+		confirmPassword: string,
+	): Promise<Record<string, unknown>> {
+		return this.request("POST", "/api/v2/users/security/change-password", {
+			currentPassword,
+			newPassword,
+			confirmPassword,
+		});
+	}
+
+	async userGetActivity(params?: {
+		page?: number;
+		limit?: number;
+		action?: string;
+		from?: string;
+		to?: string;
+	}): Promise<{
+		activities: import("../types").ActivityEntry[];
+		pagination: {
+			page: number;
+			limit: number;
+			total: number;
+			totalPages: number;
+		};
+	}> {
+		const query = new URLSearchParams();
+		if (params?.page) query.set("page", String(params.page));
+		if (params?.limit) query.set("limit", String(params.limit));
+		if (params?.action) query.set("action", params.action);
+		if (params?.from) query.set("from", params.from);
+		if (params?.to) query.set("to", params.to);
+		const qs = query.toString();
+		return this.request("GET", `/api/v2/users/activity${qs ? `?${qs}` : ""}`);
+	}
+
+	async userGetSecurityEvents(params?: {
+		page?: number;
+		limit?: number;
+	}): Promise<{
+		events: unknown[];
+		pagination: {
+			page: number;
+			limit: number;
+			total: number;
+			totalPages: number;
+		};
+	}> {
+		const query = new URLSearchParams();
+		if (params?.page) query.set("page", String(params.page));
+		if (params?.limit) query.set("limit", String(params.limit));
+		const qs = query.toString();
+		return this.request(
+			"GET",
+			`/api/v2/users/security-events${qs ? `?${qs}` : ""}`,
+		);
+	}
+
+	async userExportData(
+		format?: "json" | "csv",
+		includeWallet?: boolean,
+	): Promise<Record<string, unknown>> {
+		const query = new URLSearchParams();
+		if (format) query.set("format", format);
+		if (includeWallet !== undefined)
+			query.set("includeWallet", String(includeWallet));
+		const qs = query.toString();
+		return this.request("GET", `/api/v2/users/export${qs ? `?${qs}` : ""}`);
+	}
+
+	async userGetNotifications(): Promise<{
+		preferences: import("../types").NotificationPreferences;
+	}> {
+		return this.request("GET", "/api/v2/users/notifications");
+	}
+
+	async userUpdateNotifications(
+		prefs: Partial<import("../types").NotificationPreferences>,
+	): Promise<{
+		preferences: import("../types").NotificationPreferences;
+		message: string;
+	}> {
+		return this.request("PUT", "/api/v2/users/notifications", prefs);
+	}
+
 	/** @deprecated Use dkgInitiate() for v2 synchronous 3-step DKG flow */
 	async initiateDKG(): Promise<{
 		sessionId: string;

@@ -315,6 +315,99 @@ export interface Factor {
 	lastUsedAt: string | null;
 }
 
+export type MFAMethodType = "totp" | "webauthn" | "sms" | "email";
+
+export type MFAOperationType =
+	| "signing"
+	| "recovery_initiation"
+	| "device_add"
+	| "mfa_disable"
+	| "mfa_policy_update"
+	| "key_rotation"
+	| "high_value_signing";
+
+export interface MFAStatus {
+	enabled: boolean;
+	methods: Array<{
+		id: string;
+		methodType: MFAMethodType;
+		status: string;
+		createdAt: string;
+	}>;
+	policy: MFAPolicy | null;
+}
+
+export interface MFAPolicy {
+	requiredForOperations: MFAOperationType[];
+	preferredMethod: MFAMethodType | null;
+}
+
+export interface TOTPSetupResponse {
+	methodId: string;
+	otpauthUrl: string;
+	secret: string;
+	backupCodes: string[];
+}
+
+export interface WebAuthnSetupResponse {
+	methodId: string;
+	options: Record<string, unknown>;
+}
+
+export interface MFAChallenge {
+	challengeId: string;
+	[key: string]: unknown;
+}
+
+export interface UserProfile {
+	id: string;
+	email: string;
+	emailVerified: boolean;
+	displayName: string | null;
+	profilePicture: string | null;
+	oauthProvider: string;
+	walletAddress: string | null;
+	createdAt: string;
+	updatedAt: string;
+	lastLoginAt: string | null;
+}
+
+export interface TrustedDevice {
+	id: string;
+	deviceName: string;
+	isTrusted: boolean;
+	trustLevel: string;
+	lastSeenAt: string;
+	createdAt: string;
+	userAgent: string;
+	ipAddress: string;
+}
+
+export interface SecuritySettings {
+	emailVerified: boolean;
+	hasWallet: boolean;
+	twoFactorEnabled: boolean;
+	recoveryMethodsCount: number;
+	lastPasswordChange: string | null;
+	securityScore: string;
+}
+
+export interface ActivityEntry {
+	id: string;
+	action: string;
+	resource: string;
+	timestamp: string;
+	ipAddress: string;
+	success: boolean;
+}
+
+export interface NotificationPreferences {
+	emailNotifications: boolean;
+	securityAlerts: boolean;
+	transactionNotifications: boolean;
+	marketingEmails: boolean;
+}
+
 export class SDKError extends Error {
 	constructor(
 		message: string,

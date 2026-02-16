@@ -152,6 +152,10 @@ export class NeroMpcSDK {
 		return this._provider;
 	}
 
+	get apiClientForHooks(): APIClient {
+		return this.apiClient;
+	}
+
 	get state(): NeroSDKState {
 		return {
 			isAuthenticated: this.isAuthenticated,
