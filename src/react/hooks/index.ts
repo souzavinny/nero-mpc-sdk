@@ -27,3 +27,5 @@ export {
 	useNeroProfile,
 	type UseNeroProfileReturn,
 } from "./useNeroProfile";
+export { useNeroAudit, type UseNeroAuditReturn } from "./useNeroAudit";
+export { useNeroAdmin, type UseNeroAdminReturn } from "./useNeroAdmin";

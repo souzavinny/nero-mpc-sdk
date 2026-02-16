@@ -408,6 +408,78 @@ export interface NotificationPreferences {
 	marketingEmails: boolean;
 }
 
+export interface AuditLog {
+	id: string;
+	userId: string;
+	action: string;
+	resource: string;
+	resourceId: string;
+	metadata: Record<string, unknown>;
+	ipAddress: string;
+	userAgent: string;
+	success: boolean;
+	createdAt: string;
+}
+
+export interface AuditLogQuery {
+	limit?: number;
+	offset?: number;
+	action?: string;
+	startDate?: string;
+	endDate?: string;
+}
+
+export interface AuditStats {
+	totalOperations: number;
+	signMessageCount: number;
+	signTransactionCount: number;
+	keyGenCount: number;
+}
+
+export interface ApiKeyRecord {
+	id: string;
+	name: string;
+	keyPrefix: string;
+	scopes: string[];
+	rateLimitPerMinute: number;
+	isActive: boolean;
+	expiresAt: string | null;
+}
+
+export interface ApiKeyCreateResult extends ApiKeyRecord {
+	key: string;
+	createdAt: string;
+}
+
+export interface ProjectSettings {
+	sessionLifetimeSeconds: number;
+	enableDappShare: boolean;
+}
+
+export interface JwtVerifier {
+	id: string;
+	name: string;
+	type: "oidc" | "firebase";
+	jwksUrl: string | null;
+	issuer: string;
+	audience: string | null;
+	clientId: string | null;
+	configJson: Record<string, unknown>;
+	isActive: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface AggregateVerifierRule {
+	id: string;
+	name: string;
+	matchField: string;
+	subVerifiers: string[];
+	isActive: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
 export class SDKError extends Error {
 	constructor(
 		message: string,

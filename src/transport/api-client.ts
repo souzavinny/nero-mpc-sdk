@@ -1004,6 +1004,182 @@ export class APIClient {
 		return this.request("PUT", "/api/v2/users/notifications", prefs);
 	}
 
+	// Audit V2 API Methods
+
+	async auditGetLogs(params?: import("../types").AuditLogQuery): Promise<{
+		logs: import("../types").AuditLog[];
+		pagination: {
+			limit: number;
+			offset: number;
+			total: number;
+			hasMore: boolean;
+		};
+	}> {
+		const query = new URLSearchParams();
+		if (params?.limit) query.set("limit", String(params.limit));
+		if (params?.offset) query.set("offset", String(params.offset));
+		if (params?.action) query.set("action", params.action);
+		if (params?.startDate) query.set("startDate", params.startDate);
+		if (params?.endDate) query.set("endDate", params.endDate);
+		const qs = query.toString();
+		return this.request("GET", `/api/v2/audit-logs${qs ? `?${qs}` : ""}`);
+	}
+
+	async auditGetStats(): Promise<import("../types").AuditStats> {
+		return this.request("GET", "/api/v2/audit-logs/stats");
+	}
+
+	async auditGetRecent(): Promise<{
+		logs: import("../types").AuditLog[];
+	}> {
+		return this.request("GET", "/api/v2/audit-logs/recent");
+	}
+
+	// Admin V2 API Methods
+
+	async adminCreateApiKey(options?: {
+		name?: string;
+		scopes?: string[];
+		rateLimitPerMinute?: number;
+		expiresAt?: string;
+	}): Promise<import("../types").ApiKeyCreateResult> {
+		return this.request("POST", "/api/v2/admin/api-keys", {
+			name: options?.name,
+			scopes: options?.scopes,
+			rate_limit_per_minute: options?.rateLimitPerMinute,
+			expires_at: options?.expiresAt,
+		});
+	}
+
+	async adminListApiKeys(): Promise<{
+		apiKeys: import("../types").ApiKeyRecord[];
+	}> {
+		return this.request("GET", "/api/v2/admin/api-keys");
+	}
+
+	async adminRevokeApiKey(id: string): Promise<{ message: string }> {
+		return this.request("DELETE", `/api/v2/admin/api-keys/${id}`);
+	}
+
+	async adminRotateApiKey(
+		id: string,
+		name?: string,
+	): Promise<
+		import("../types").ApiKeyCreateResult & { previousKeyId: string }
+	> {
+		return this.request("POST", `/api/v2/admin/api-keys/${id}/rotate`, {
+			name,
+		});
+	}
+
+	async adminGetSettings(): Promise<import("../types").ProjectSettings> {
+		return this.request("GET", "/api/v2/admin/settings");
+	}
+
+	async adminUpdateSettings(settings: {
+		sessionLifetimeSeconds?: number;
+		enableDappShare?: boolean;
+	}): Promise<import("../types").ProjectSettings> {
+		return this.request("PATCH", "/api/v2/admin/settings", {
+			session_lifetime_seconds: settings.sessionLifetimeSeconds,
+			enable_dapp_share: settings.enableDappShare,
+		});
+	}
+
+	// Verifier V2 API Methods
+
+	async createVerifier(config: {
+		name: string;
+		type: "oidc" | "firebase";
+		issuer: string;
+		jwksUrl?: string;
+		audience?: string;
+		clientId?: string;
+		configJson?: Record<string, unknown>;
+	}): Promise<import("../types").JwtVerifier> {
+		return this.request("POST", "/api/v2/auth/verifiers", {
+			name: config.name,
+			type: config.type,
+			issuer: config.issuer,
+			jwks_url: config.jwksUrl,
+			audience: config.audience,
+			client_id: config.clientId,
+			config_json: config.configJson,
+		});
+	}
+
+	async listVerifiers(): Promise<{
+		verifiers: import("../types").JwtVerifier[];
+	}> {
+		return this.request("GET", "/api/v2/auth/verifiers");
+	}
+
+	async updateVerifier(
+		id: string,
+		updates: {
+			name?: string;
+			issuer?: string;
+			jwksUrl?: string | null;
+			audience?: string | null;
+			clientId?: string | null;
+			configJson?: Record<string, unknown>;
+			isActive?: boolean;
+		},
+	): Promise<import("../types").JwtVerifier> {
+		return this.request("PUT", `/api/v2/auth/verifiers/${id}`, {
+			name: updates.name,
+			issuer: updates.issuer,
+			jwks_url: updates.jwksUrl,
+			audience: updates.audience,
+			client_id: updates.clientId,
+			config_json: updates.configJson,
+			is_active: updates.isActive,
+		});
+	}
+
+	async deleteVerifier(id: string): Promise<{ message: string }> {
+		return this.request("DELETE", `/api/v2/auth/verifiers/${id}`);
+	}
+
+	// Aggregate Verifier V2 API Methods
+
+	async createAggregateRule(config: {
+		name: string;
+		matchField?: string;
+		subVerifiers: string[];
+	}): Promise<import("../types").AggregateVerifierRule> {
+		return this.request("POST", "/api/v2/auth/aggregate-verifiers", {
+			name: config.name,
+			match_field: config.matchField,
+			sub_verifiers: config.subVerifiers,
+		});
+	}
+
+	async listAggregateRules(): Promise<{
+		rules: import("../types").AggregateVerifierRule[];
+	}> {
+		return this.request("GET", "/api/v2/auth/aggregate-verifiers");
+	}
+
+	async updateAggregateRule(
+		id: string,
+		updates: {
+			name?: string;
+			subVerifiers?: string[];
+			isActive?: boolean;
+		},
+	): Promise<import("../types").AggregateVerifierRule> {
+		return this.request("PUT", `/api/v2/auth/aggregate-verifiers/${id}`, {
+			name: updates.name,
+			sub_verifiers: updates.subVerifiers,
+			is_active: updates.isActive,
+		});
+	}
+
+	async deleteAggregateRule(id: string): Promise<{ message: string }> {
+		return this.request("DELETE", `/api/v2/auth/aggregate-verifiers/${id}`);
+	}
+
 	/** @deprecated Use dkgInitiate() for v2 synchronous 3-step DKG flow */
 	async initiateDKG(): Promise<{
 		sessionId: string;
