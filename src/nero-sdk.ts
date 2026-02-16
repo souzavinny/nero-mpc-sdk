@@ -15,8 +15,17 @@ import { APIClient } from "./transport/api-client";
 import { WebSocketClient } from "./transport/websocket-client";
 import type {
 	AuthTokens,
+	BackupData,
+	BackupExportResponse,
+	BackupImportResponse,
+	BackupInfo,
 	CustomLoginOptions,
 	DeviceFingerprint,
+	Factor,
+	FactorType,
+	RecoveryAttempt,
+	RecoveryMethod,
+	RecoveryMethodType,
 	SDKConfig,
 	SessionReconnectResult,
 	SessionStatus,
@@ -750,6 +759,108 @@ export class NeroMpcSDK {
 		await this.keyManager.storeKeyShare(keyShare);
 
 		await this.initializeWallet();
+	}
+
+	async exportBackupV2(password: string): Promise<BackupExportResponse> {
+		return this.apiClient.backupExport(password);
+	}
+
+	async importBackupV2(
+		backup: BackupData,
+		password: string,
+	): Promise<BackupImportResponse> {
+		return this.apiClient.backupImport(backup, password);
+	}
+
+	async getBackupInfo(): Promise<BackupInfo> {
+		return this.apiClient.backupInfo();
+	}
+
+	async setupRecovery(
+		methodType: RecoveryMethodType,
+		config: Record<string, unknown>,
+		encryptedData?: string,
+	): Promise<{
+		method: {
+			id: string;
+			methodType: string;
+			status: string;
+			createdAt: string;
+		};
+		verificationRequired: boolean;
+		expiresAt?: string;
+	}> {
+		return this.apiClient.recoverySetup(methodType, config, encryptedData);
+	}
+
+	async listRecoveryMethods(
+		includeInactive?: boolean,
+	): Promise<{ methods: RecoveryMethod[]; count: number }> {
+		return this.apiClient.recoveryListMethods(includeInactive);
+	}
+
+	async deleteRecoveryMethod(methodId: string): Promise<{ deleted: true }> {
+		return this.apiClient.recoveryDeleteMethod(methodId);
+	}
+
+	async initiateRecovery(methodId: string): Promise<RecoveryAttempt> {
+		return this.apiClient.recoveryInitiate(methodId);
+	}
+
+	async verifyRecovery(
+		attemptId: string,
+		verificationCode: string,
+	): Promise<{
+		attemptId: string;
+		status: string;
+		verified: boolean;
+		canComplete: boolean;
+		timelockExpiresAt: string | null;
+	}> {
+		return this.apiClient.recoveryVerify(attemptId, verificationCode);
+	}
+
+	async completeRecovery(attemptId: string): Promise<{
+		attemptId: string;
+		status: string;
+		recoveredData: unknown;
+	}> {
+		return this.apiClient.recoveryComplete(attemptId);
+	}
+
+	async cancelRecovery(attemptId: string): Promise<{ cancelled: true }> {
+		return this.apiClient.recoveryCancel(attemptId);
+	}
+
+	async addFactor(
+		factorType: FactorType,
+		encryptedShare: string,
+		options?: { password?: string; deviceFingerprint?: string },
+	): Promise<{
+		factor: {
+			id: string;
+			factorType: string;
+			status: string;
+			createdAt: string;
+		};
+		factorKey?: string;
+	}> {
+		return this.apiClient.factorAdd(factorType, encryptedShare, options);
+	}
+
+	async listFactors(): Promise<{ factors: Factor[]; count: number }> {
+		return this.apiClient.factorList();
+	}
+
+	async deleteFactor(id: string): Promise<{ deleted: true }> {
+		return this.apiClient.factorDelete(id);
+	}
+
+	async recoverShareWithFactor(
+		factorId: string,
+		verificationCode: string,
+	): Promise<{ recoveredShare: unknown }> {
+		return this.apiClient.factorRecoverShare(factorId, verificationCode);
 	}
 
 	private async initializeWallet(): Promise<void> {

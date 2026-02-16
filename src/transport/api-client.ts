@@ -544,6 +544,197 @@ export class APIClient {
 		return this.request("GET", "/api/v2/wallet/list");
 	}
 
+	// Backup V2 API Methods
+
+	async backupExport(password: string): Promise<{
+		backup: import("../types").BackupData;
+		fingerprint: string;
+	}> {
+		return this.request("POST", "/api/v2/backup/export", { password });
+	}
+
+	async backupImport(
+		backup: import("../types").BackupData,
+		password: string,
+	): Promise<{
+		partyId: number;
+		publicKey: string;
+		createdAt: string;
+		verified: boolean;
+	}> {
+		return this.request("POST", "/api/v2/backup/import", {
+			backup,
+			password,
+		});
+	}
+
+	async backupInfo(): Promise<import("../types").BackupInfo> {
+		return this.request("GET", "/api/v2/backup/info");
+	}
+
+	// Recovery V2 API Methods
+
+	async recoverySetup(
+		methodType: import("../types").RecoveryMethodType,
+		config: Record<string, unknown>,
+		encryptedData?: string,
+	): Promise<{
+		method: {
+			id: string;
+			methodType: string;
+			status: string;
+			createdAt: string;
+		};
+		verificationRequired: boolean;
+		expiresAt?: string;
+	}> {
+		return this.request("POST", "/api/v2/recovery/setup", {
+			methodType,
+			config: { methodType, ...config },
+			encryptedData,
+		});
+	}
+
+	async recoveryListMethods(includeInactive?: boolean): Promise<{
+		methods: import("../types").RecoveryMethod[];
+		count: number;
+	}> {
+		const query = includeInactive ? "?includeInactive=true" : "";
+		return this.request("GET", `/api/v2/recovery/methods${query}`);
+	}
+
+	async recoveryDeleteMethod(methodId: string): Promise<{ deleted: true }> {
+		return this.request("DELETE", `/api/v2/recovery/methods/${methodId}`);
+	}
+
+	async recoveryInitiate(
+		methodId: string,
+	): Promise<import("../types").RecoveryAttempt> {
+		return this.request("POST", "/api/v2/recovery/initiate", { methodId });
+	}
+
+	async recoveryVerify(
+		attemptId: string,
+		verificationCode: string,
+	): Promise<{
+		attemptId: string;
+		status: string;
+		verified: boolean;
+		canComplete: boolean;
+		timelockExpiresAt: string | null;
+	}> {
+		return this.request("POST", "/api/v2/recovery/verify", {
+			attemptId,
+			verificationCode,
+		});
+	}
+
+	async recoveryComplete(attemptId: string): Promise<{
+		attemptId: string;
+		status: string;
+		recoveredData: unknown;
+	}> {
+		return this.request("POST", "/api/v2/recovery/complete", { attemptId });
+	}
+
+	async recoveryCancel(attemptId: string): Promise<{ cancelled: true }> {
+		return this.request("POST", "/api/v2/recovery/cancel", { attemptId });
+	}
+
+	// Factors V2 API Methods
+
+	async factorAdd(
+		factorType: import("../types").FactorType,
+		encryptedShare: string,
+		options?: { password?: string; deviceFingerprint?: string },
+	): Promise<{
+		factor: {
+			id: string;
+			factorType: string;
+			status: string;
+			createdAt: string;
+		};
+		factorKey?: string;
+	}> {
+		return this.request("POST", "/api/v2/factors", {
+			factorType,
+			encryptedShare,
+			...options,
+		});
+	}
+
+	async factorList(): Promise<{
+		factors: import("../types").Factor[];
+		count: number;
+	}> {
+		return this.request("GET", "/api/v2/factors");
+	}
+
+	async factorDelete(id: string): Promise<{ deleted: true }> {
+		return this.request("DELETE", `/api/v2/factors/${id}`);
+	}
+
+	async factorVerify(
+		factorId: string,
+		verificationCode: string,
+	): Promise<{ verified: boolean }> {
+		return this.request("POST", "/api/v2/factors/verify", {
+			factorId,
+			verificationCode,
+		});
+	}
+
+	async factorRecoverShare(
+		factorId: string,
+		verificationCode: string,
+	): Promise<{ recoveredShare: unknown }> {
+		return this.request("POST", "/api/v2/factors/recover-share", {
+			factorId,
+			verificationCode,
+		});
+	}
+
+	async factorRecoveryInitiate(factorId: string): Promise<{
+		attemptId: string;
+		status: string;
+		requiresVerification: boolean;
+	}> {
+		return this.request("POST", "/api/v2/factors/recover/initiate", {
+			factorId,
+		});
+	}
+
+	async factorRecoveryVerify(
+		attemptId: string,
+		verificationCode: string,
+	): Promise<{
+		attemptId: string;
+		status: string;
+		verified: boolean;
+		canComplete: boolean;
+	}> {
+		return this.request("POST", "/api/v2/factors/recover/verify", {
+			attemptId,
+			verificationCode,
+		});
+	}
+
+	async factorRecoveryComplete(attemptId: string): Promise<{
+		attemptId: string;
+		status: string;
+		recoveredData: unknown;
+	}> {
+		return this.request("POST", "/api/v2/factors/recover/complete", {
+			attemptId,
+		});
+	}
+
+	async factorRecoveryCancel(attemptId: string): Promise<{ cancelled: true }> {
+		return this.request("POST", "/api/v2/factors/recover/cancel", {
+			attemptId,
+		});
+	}
+
 	/** @deprecated Use dkgInitiate() for v2 synchronous 3-step DKG flow */
 	async initiateDKG(): Promise<{
 		sessionId: string;

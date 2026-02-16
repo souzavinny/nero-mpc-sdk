@@ -228,6 +228,93 @@ export interface SocialLoginResponse {
 	dappShare?: string;
 }
 
+export interface BackupData {
+	version: number;
+	algorithm: string;
+	kdf: string;
+	kdfParams: {
+		n: number;
+		r: number;
+		p: number;
+		saltHex: string;
+	};
+	ciphertext: string;
+	iv: string;
+	tag: string;
+	metadata: {
+		version: number;
+		createdAt: string;
+		partyId: number;
+		publicKeyCommitment: string;
+	};
+}
+
+export interface BackupExportResponse {
+	backup: BackupData;
+	fingerprint: string;
+}
+
+export interface BackupImportResponse {
+	partyId: number;
+	publicKey: string;
+	createdAt: string;
+	verified: boolean;
+}
+
+export interface BackupInfo {
+	hasBackupData: boolean;
+	share: {
+		partyId: number;
+		commitment: string;
+		createdAt: string;
+		updatedAt: string;
+	} | null;
+}
+
+export type RecoveryMethodType =
+	| "social_oauth"
+	| "cloud_backup"
+	| "recovery_phrase"
+	| "email_backup"
+	| "sms_backup"
+	| "hardware_key"
+	| "guardian"
+	| "password"
+	| "device";
+
+export interface RecoveryMethod {
+	id: string;
+	methodType: string;
+	status: string;
+	priority: number;
+	requiresVerification: boolean;
+	timelockEnabled: boolean;
+	timelockDurationHours: number;
+	lastVerifiedAt: string | null;
+	lastUsedAt: string | null;
+	createdAt: string;
+}
+
+export interface RecoveryAttempt {
+	attemptId: string;
+	status: string;
+	requiresVerification: boolean;
+	timelockExpiresAt: string | null;
+	cancellationAllowedUntil: string | null;
+}
+
+export type FactorType = "password" | "device" | "recovery_phrase";
+
+export interface Factor {
+	id: string;
+	factorType: string;
+	status: string;
+	linkedWalletCount: number;
+	createdAt: string;
+	lastVerifiedAt: string | null;
+	lastUsedAt: string | null;
+}
+
 export class SDKError extends Error {
 	constructor(
 		message: string,
