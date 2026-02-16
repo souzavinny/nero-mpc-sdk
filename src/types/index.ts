@@ -120,6 +120,7 @@ export interface SDKConfig {
 	uiConfig?: UIConfig;
 	sessionTime?: number;
 	web3AuthClientId?: string;
+	protocol?: "pedersen" | "dkls";
 }
 
 export interface AuthTokens {

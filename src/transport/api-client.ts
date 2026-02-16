@@ -87,16 +87,20 @@ export class APIClient {
 				throw new SDKError("No refresh token available", "NO_REFRESH_TOKEN");
 			}
 
-			const response = await fetch(`${this.baseUrl}/api/auth/refresh`, {
+			const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ refreshToken: this.tokens.refreshToken }),
+				body: JSON.stringify({
+					refreshToken: this.tokens.refreshToken,
+				}),
 			});
 
 			const data: APIResponse<{
-				accessToken: string;
-				refreshToken: string;
-				expiresIn: number;
+				tokens: {
+					accessToken: string;
+					refreshToken: string;
+					expiresIn: number;
+				};
 			}> = await response.json();
 
 			if (!data.success || !data.data) {
@@ -105,9 +109,9 @@ export class APIClient {
 			}
 
 			this.tokens = {
-				accessToken: data.data.accessToken,
-				refreshToken: data.data.refreshToken,
-				expiresAt: Date.now() + data.data.expiresIn * 1000,
+				accessToken: data.data.tokens.accessToken,
+				refreshToken: data.data.tokens.refreshToken,
+				expiresAt: Date.now() + data.data.tokens.expiresIn * 1000,
 			};
 		})();
 
@@ -122,12 +126,16 @@ export class APIClient {
 		provider: "google" | "github" | "apple",
 		redirectUri: string,
 	): Promise<{ url: string; state: string }> {
-		return this.request(
-			"POST",
-			"/api/auth/oauth/url",
-			{ provider, redirectUri },
+		const data = await this.request<{
+			authUrl: string;
+			state: string;
+		}>(
+			"GET",
+			`/api/v1/auth/oauth-url/${provider}?redirectUri=${encodeURIComponent(redirectUri)}`,
+			undefined,
 			false,
 		);
+		return { url: data.authUrl, state: data.state };
 	}
 
 	async handleOAuthCallback(
@@ -135,6 +143,7 @@ export class APIClient {
 		code: string,
 		state: string,
 		fingerprint: DeviceFingerprint,
+		options?: { skipWalletGeneration?: boolean },
 	): Promise<{
 		user: User;
 		tokens: AuthTokens;
@@ -143,38 +152,64 @@ export class APIClient {
 	}> {
 		const result = await this.request<{
 			user: User;
-			accessToken: string;
-			refreshToken: string;
-			expiresIn: number;
-			wallet?: WalletInfo;
-			requiresDKG: boolean;
+			tokens: {
+				accessToken: string;
+				refreshToken: string;
+				expiresIn: number;
+			};
+			isFirstLogin: boolean;
+			wallet?: {
+				walletAddress?: string;
+				requiresKeyGeneration: boolean;
+				keyGenSessionId?: string;
+				status?: string;
+				expiresAt?: string;
+				error?: string;
+			};
 		}>(
 			"POST",
-			"/api/auth/oauth/callback",
-			{ provider, code, state, fingerprint },
+			"/api/v1/auth/social-login",
+			{
+				provider,
+				code,
+				state,
+				deviceId: fingerprint.additionalData,
+				skipWalletGeneration: options?.skipWalletGeneration,
+			},
 			false,
 		);
 
 		this.tokens = {
-			accessToken: result.accessToken,
-			refreshToken: result.refreshToken,
-			expiresAt: Date.now() + result.expiresIn * 1000,
+			accessToken: result.tokens.accessToken,
+			refreshToken: result.tokens.refreshToken,
+			expiresAt: Date.now() + result.tokens.expiresIn * 1000,
 		};
+
+		const requiresDKG =
+			result.wallet?.requiresKeyGeneration === true &&
+			!result.wallet?.walletAddress;
 
 		return {
 			user: result.user,
 			tokens: this.tokens,
-			wallet: result.wallet,
-			requiresDKG: result.requiresDKG,
+			wallet: result.wallet?.walletAddress
+				? {
+						eoaAddress: result.wallet.walletAddress,
+						publicKey: "",
+						chainId: 0,
+					}
+				: undefined,
+			requiresDKG,
 		};
 	}
 
 	async getCurrentUser(): Promise<User> {
-		return this.request("GET", "/api/user/me");
+		const result = await this.request<{ user: User }>("GET", "/api/v1/auth/me");
+		return result.user;
 	}
 
 	async logout(): Promise<void> {
-		await this.request("POST", "/api/auth/logout");
+		await this.request("POST", "/api/v1/auth/logout");
 		this.tokens = null;
 	}
 
@@ -333,7 +368,7 @@ export class APIClient {
 	}
 
 	async getWalletInfo(): Promise<WalletInfo> {
-		return this.request("GET", "/api/wallet/info");
+		return this.request("GET", "/api/v1/wallet/info");
 	}
 
 	async getPartyPublicShares(): Promise<{

@@ -8,13 +8,16 @@ import type {
 	TypedDataMessage,
 	TypedDataTypes,
 } from "./core/provider-types";
+import { IndexedDBStorage, MemoryStorage } from "./core/secure-storage";
 import { DKGClient } from "./protocols/dkg/dkg-client";
+import { DKLSClient } from "./protocols/dkls/dkls-client";
 import { APIClient } from "./transport/api-client";
 import { WebSocketClient } from "./transport/websocket-client";
 import type {
 	AuthTokens,
 	DeviceFingerprint,
 	SDKConfig,
+	StorageAdapter,
 	User,
 	WalletInfo,
 } from "./types";
@@ -61,6 +64,7 @@ export class NeroMpcSDK {
 	private keyManager: ClientKeyManager | null = null;
 	private deviceKey: string | null = null;
 	private chainManager: ChainManager;
+	private _protocol: "pedersen" | "dkls";
 
 	private _user: User | null = null;
 	private _wallet: SmartWallet | null = null;
@@ -71,6 +75,8 @@ export class NeroMpcSDK {
 	private _connectionStatus: ConnectionStatus = "disconnected";
 	private _customChains: Map<number, ChainConfig> = new Map();
 	private _cachedWalletInfo: WalletInfo | null = null;
+	private _dklsClient: DKLSClient | null = null;
+	private _dklsWalletAddress: string | null = null;
 
 	constructor(config: SDKConfig) {
 		this.config = {
@@ -80,6 +86,7 @@ export class NeroMpcSDK {
 			...config,
 		};
 
+		this._protocol = this.config.protocol ?? "pedersen";
 		this._chainId = this.config.chainId!;
 		this.apiClient = new APIClient(this.config);
 		this.chainManager = new ChainManager(this._chainId);
@@ -94,6 +101,9 @@ export class NeroMpcSDK {
 	}
 
 	get hasWallet(): boolean {
+		if (this._protocol === "dkls") {
+			return this._dklsWalletAddress !== null;
+		}
 		return this._wallet !== null;
 	}
 
@@ -172,12 +182,14 @@ export class NeroMpcSDK {
 		state: string,
 	): Promise<{ user: User; requiresDKG: boolean }> {
 		const fingerprint = this.getDeviceFingerprint();
+		const skipWallet = this._protocol === "dkls";
 
 		const result = await this.apiClient.handleOAuthCallback(
 			provider,
 			code,
 			state,
 			fingerprint,
+			{ skipWalletGeneration: skipWallet },
 		);
 
 		this._user = result.user;
@@ -185,6 +197,13 @@ export class NeroMpcSDK {
 
 		if (this.keyManager && this._user) {
 			await this.keyManager.initialize(this._user.id);
+		}
+
+		if (this._protocol === "dkls") {
+			return {
+				user: result.user,
+				requiresDKG: result.requiresDKG,
+			};
 		}
 
 		if (!result.requiresDKG && result.wallet) {
@@ -225,6 +244,10 @@ export class NeroMpcSDK {
 	async generateWallet(): Promise<WalletInfo> {
 		if (!this._user) {
 			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
+		}
+
+		if (this._protocol === "dkls") {
+			return this.generateWalletDKLS();
 		}
 
 		if (!this.keyManager) {
@@ -268,6 +291,45 @@ export class NeroMpcSDK {
 		return this._cachedWalletInfo;
 	}
 
+	private async generateWalletDKLS(): Promise<WalletInfo> {
+		const dklsClient = this.getOrCreateDKLSClient();
+
+		const result = await dklsClient.executeKeygen();
+
+		this._dklsWalletAddress = result.walletAddress;
+
+		await this.connect();
+
+		const walletInfo: WalletInfo = {
+			eoaAddress: result.walletAddress,
+			publicKey: result.jointPublicKey,
+			chainId: this._chainId,
+		};
+
+		this._cachedWalletInfo = walletInfo;
+		return walletInfo;
+	}
+
+	private getOrCreateDKLSClient(): DKLSClient {
+		if (!this._dklsClient) {
+			const storage = this.createDKLSStorage();
+			this._dklsClient = new DKLSClient({
+				apiClient: this.apiClient,
+				storage,
+			});
+		}
+		return this._dklsClient;
+	}
+
+	private createDKLSStorage(): StorageAdapter {
+		const prefix = this.config.storagePrefix ?? "nero";
+		const isIndexedDBAvailable =
+			typeof indexedDB !== "undefined" && indexedDB !== null;
+		return isIndexedDBAvailable
+			? new IndexedDBStorage(prefix)
+			: new MemoryStorage(prefix);
+	}
+
 	async logout(): Promise<void> {
 		try {
 			await this.apiClient.logout();
@@ -276,6 +338,8 @@ export class NeroMpcSDK {
 		this._user = null;
 		this._wallet = null;
 		this._publicKey = null;
+		this._dklsClient = null;
+		this._dklsWalletAddress = null;
 		this._connectionStatus = "disconnected";
 		this.apiClient.clearTokens();
 		this.clearStoredTokens();
@@ -290,7 +354,11 @@ export class NeroMpcSDK {
 	}
 
 	async connect(): Promise<EIP1193Provider> {
-		if (!this._wallet) {
+		if (this._protocol === "dkls") {
+			if (!this._dklsWalletAddress) {
+				throw new SDKError("DKLS wallet not available", "NO_WALLET");
+			}
+		} else if (!this._wallet) {
 			throw new SDKError("Wallet not available", "NO_WALLET");
 		}
 
@@ -388,6 +456,9 @@ export class NeroMpcSDK {
 	}
 
 	private getAccounts(): string[] {
+		if (this._protocol === "dkls") {
+			return this._dklsWalletAddress ? [this._dklsWalletAddress] : [];
+		}
 		if (!this._wallet) return [];
 		return [this._wallet.eoaAddress];
 	}
@@ -395,6 +466,15 @@ export class NeroMpcSDK {
 	private async signMessageInternal(
 		message: string | Uint8Array,
 	): Promise<string> {
+		if (this._protocol === "dkls") {
+			const dklsClient = this.getOrCreateDKLSClient();
+			const msgStr =
+				typeof message === "string"
+					? message
+					: new TextDecoder().decode(message);
+			const result = await dklsClient.signMessage(msgStr);
+			return result.signature;
+		}
 		if (!this._wallet) {
 			throw new SDKError("Wallet not available", "NO_WALLET");
 		}
@@ -408,6 +488,15 @@ export class NeroMpcSDK {
 		primaryType: string,
 		message: TypedDataMessage,
 	): Promise<string> {
+		if (this._protocol === "dkls") {
+			const dklsClient = this.getOrCreateDKLSClient();
+			const result = await dklsClient.signTypedData(
+				domain as Record<string, unknown>,
+				types as Record<string, Array<{ name: string; type: string }>>,
+				message as Record<string, unknown>,
+			);
+			return result.signature;
+		}
 		if (!this._wallet) {
 			throw new SDKError("Wallet not available", "NO_WALLET");
 		}
@@ -421,6 +510,43 @@ export class NeroMpcSDK {
 	}
 
 	private async sendTransactionInternal(tx: unknown): Promise<string> {
+		if (this._protocol === "dkls") {
+			const dklsClient = this.getOrCreateDKLSClient();
+			const txRequest = tx as {
+				to: string;
+				value?: string;
+				data?: string;
+				nonce?: number;
+				gasLimit?: string;
+				gasPrice?: string;
+				chainId?: number;
+			};
+
+			// Use ethers Transaction to compute unsignedHash
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const { Transaction } = require("ethers") as {
+				Transaction: {
+					from: (data: Record<string, unknown>) => { unsignedHash: string };
+				};
+			};
+			const unsignedTx = Transaction.from({
+				to: txRequest.to,
+				value: txRequest.value ?? "0x0",
+				data: txRequest.data ?? "0x",
+				nonce: txRequest.nonce ?? 0,
+				gasLimit: txRequest.gasLimit ?? "21000",
+				gasPrice: txRequest.gasPrice ?? "0",
+				chainId: txRequest.chainId ?? this._chainId,
+			});
+			const messageHash = unsignedTx.unsignedHash;
+
+			const result = await dklsClient.sign({
+				messageHash,
+				messageType: "transaction",
+				dkgSessionId: "",
+			});
+			return result.signature;
+		}
 		if (!this._wallet) {
 			throw new SDKError("Wallet not available", "NO_WALLET");
 		}
@@ -486,6 +612,11 @@ export class NeroMpcSDK {
 	}
 
 	private async initializeWallet(): Promise<void> {
+		if (this._protocol === "dkls") {
+			await this.initializeWalletDKLS();
+			return;
+		}
+
 		if (!this.keyManager || !this._user) {
 			return;
 		}
@@ -512,6 +643,24 @@ export class NeroMpcSDK {
 			);
 			this._cachedWalletInfo = await this._wallet.getWalletInfo();
 		} catch {}
+	}
+
+	private async initializeWalletDKLS(): Promise<void> {
+		const dklsClient = this.getOrCreateDKLSClient();
+		const keyShare = await dklsClient.loadKeyShare();
+		if (!keyShare) {
+			return;
+		}
+
+		const walletAddress = await dklsClient.getWalletAddress();
+		if (walletAddress) {
+			this._dklsWalletAddress = walletAddress;
+			this._cachedWalletInfo = {
+				eoaAddress: walletAddress,
+				publicKey: keyShare.jointPublicKey,
+				chainId: this._chainId,
+			};
+		}
 	}
 
 	private getDeviceFingerprint(): DeviceFingerprint {
