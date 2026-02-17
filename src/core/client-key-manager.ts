@@ -78,6 +78,30 @@ export class ClientKeyManager {
 		this.cachedPartyShares = shares;
 	}
 
+	async storePublicKey(publicKey: string): Promise<void> {
+		if (!this.currentUserId) {
+			throw new SDKError("User not initialized", "USER_NOT_INITIALIZED");
+		}
+		await this.storage.storePublicKey(this.currentUserId, publicKey);
+	}
+
+	async getPublicKey(): Promise<string | null> {
+		if (!this.currentUserId) return null;
+		return this.storage.getPublicKey(this.currentUserId);
+	}
+
+	async storeBackendShare(share: string): Promise<void> {
+		if (!this.currentUserId) {
+			throw new SDKError("User not initialized", "USER_NOT_INITIALIZED");
+		}
+		await this.storage.storeBackendShare(this.currentUserId, share);
+	}
+
+	async getBackendShare(): Promise<string | null> {
+		if (!this.currentUserId) return null;
+		return this.storage.getBackendShare(this.currentUserId);
+	}
+
 	async deleteKeyShare(): Promise<void> {
 		if (!this.currentUserId) {
 			return;

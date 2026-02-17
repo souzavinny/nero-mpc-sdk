@@ -10,6 +10,16 @@ import type {
 } from "./core/provider-types";
 import { IndexedDBStorage, MemoryStorage } from "./core/secure-storage";
 import { DKGClient } from "./protocols/dkg/dkg-client";
+import {
+	CURVE_ORDER,
+	hexToScalar,
+	mod,
+	scalarToHex,
+} from "./protocols/dkg/polynomial";
+import {
+	decryptShare,
+	generateEphemeralKeyPair,
+} from "./protocols/dkg/share-exchange";
 import { DKLSClient } from "./protocols/dkls/dkls-client";
 import { APIClient } from "./transport/api-client";
 import { WebSocketClient } from "./transport/websocket-client";
@@ -23,6 +33,8 @@ import type {
 	DeviceFingerprint,
 	Factor,
 	FactorType,
+	KeyMaterialResponse,
+	ReconstructedKey,
 	RecoveryAttempt,
 	RecoveryMethod,
 	RecoveryMethodType,
@@ -91,6 +103,7 @@ export class NeroMpcSDK {
 	private _wallet: SmartWallet | null = null;
 	private _publicKey: string | null = null;
 	private _partyPublicShares: Map<number, string> = new Map();
+	private _backendShare: string | null = null;
 	private _provider: NeroProvider | null = null;
 	private _chainId: number;
 	private _connectionStatus: ConnectionStatus = "disconnected";
@@ -98,6 +111,7 @@ export class NeroMpcSDK {
 	private _cachedWalletInfo: WalletInfo | null = null;
 	private _dklsClient: DKLSClient | null = null;
 	private _dklsWalletAddress: string | null = null;
+	private _cachedReconstructedKey: ReconstructedKey | null = null;
 
 	constructor(config: SDKConfig) {
 		this.config = {
@@ -210,16 +224,16 @@ export class NeroMpcSDK {
 		provider: OAuthProvider,
 		code: string,
 		state: string,
+		redirectUri?: string,
 	): Promise<{ user: User; requiresDKG: boolean }> {
 		const fingerprint = this.getDeviceFingerprint();
-		const skipWallet = this._protocol === "dkls";
 
 		const result = await this.apiClient.handleOAuthCallback(
 			provider,
 			code,
 			state,
 			fingerprint,
-			{ skipWalletGeneration: skipWallet },
+			{ skipWalletGeneration: true, redirectUri },
 		);
 
 		this._user = result.user;
@@ -229,16 +243,24 @@ export class NeroMpcSDK {
 			await this.keyManager.initialize(this._user.id);
 		}
 
-		if (this._protocol === "dkls") {
-			return {
-				user: result.user,
-				requiresDKG: result.requiresDKG,
-			};
-		}
-
 		if (!result.requiresDKG && result.wallet) {
-			await this.initializeWallet();
-			await this.connect();
+			if (this._protocol === "dkls") {
+				const dklsClient = this.getOrCreateDKLSClient();
+				const keyShare = await dklsClient.loadKeyShare();
+				if (keyShare) {
+					this._dklsWalletAddress = result.wallet.eoaAddress;
+					await this.connect();
+				} else {
+					return { user: result.user, requiresDKG: true };
+				}
+			} else {
+				await this.initializeWallet();
+				if (this._wallet) {
+					await this.connect();
+				} else {
+					return { user: result.user, requiresDKG: true };
+				}
+			}
 		}
 
 		return {
@@ -389,6 +411,89 @@ export class NeroMpcSDK {
 		return this.apiClient.listWallets();
 	}
 
+	async getKeyMaterial(): Promise<ReconstructedKey> {
+		if (!this._user) {
+			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
+		}
+
+		if (this._cachedReconstructedKey) {
+			return this._cachedReconstructedKey;
+		}
+
+		const protocol = this._protocol === "dkls" ? "dkls" : "pedersen-dkg-v1";
+
+		const { privateKey: ephPriv, publicKey: ephPub } =
+			generateEphemeralKeyPair();
+
+		const response: KeyMaterialResponse = await this.apiClient.getKeyMaterial(
+			ephPub,
+			protocol,
+		);
+
+		const { share: backendShare } = await decryptShare(
+			response.encryptedShare,
+			ephPriv,
+		);
+
+		if (this.keyManager) {
+			await this.keyManager.storeBackendShare(scalarToHex(backendShare));
+		}
+
+		const clientShare = await this.getClientShare();
+
+		const secret = this.reconstructSecret(
+			clientShare,
+			backendShare,
+			response.metadata.sharingType,
+		);
+
+		const privateKeyHex = scalarToHex(secret);
+
+		const result: ReconstructedKey = {
+			privateKey: `0x${privateKeyHex}`,
+			walletAddress: response.walletAddress,
+			publicKey: response.publicKey,
+			protocol,
+		};
+
+		this._cachedReconstructedKey = result;
+
+		return result;
+	}
+
+	private async getClientShare(): Promise<bigint> {
+		if (this._protocol === "dkls") {
+			const dklsClient = this.getOrCreateDKLSClient();
+			const keyShare = await dklsClient.loadKeyShare();
+			if (!keyShare) {
+				throw new SDKError("No DKLS key share found", "NO_KEY_SHARE");
+			}
+			return hexToScalar(keyShare.secretShare);
+		}
+
+		if (!this.keyManager) {
+			throw new SDKError("SDK not initialized", "NOT_INITIALIZED");
+		}
+
+		const keyShare = await this.keyManager.getKeyShare();
+		if (!keyShare) {
+			throw new SDKError("No Pedersen key share found", "NO_KEY_SHARE");
+		}
+
+		return hexToScalar(keyShare.privateShare);
+	}
+
+	private reconstructSecret(
+		clientShare: bigint,
+		backendShare: bigint,
+		sharingType: "additive" | "multiplicative",
+	): bigint {
+		if (sharingType === "multiplicative") {
+			return mod(clientShare * backendShare, CURVE_ORDER);
+		}
+		return mod(2n * clientShare - backendShare, CURVE_ORDER);
+	}
+
 	async generateWallet(): Promise<WalletInfo> {
 		if (!this._user) {
 			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
@@ -424,6 +529,12 @@ export class NeroMpcSDK {
 		this._partyPublicShares = dkgClient.getPartyPublicShares();
 
 		await this.keyManager.storePartyPublicShares(this._partyPublicShares);
+		await this.keyManager.storePublicKey(this._publicKey);
+
+		this._backendShare = dkgClient.getBackendShare();
+		if (this._backendShare) {
+			await this.keyManager.storeBackendShare(this._backendShare);
+		}
 
 		this._wallet = this.createSmartWallet(
 			keyShare,
@@ -492,6 +603,7 @@ export class NeroMpcSDK {
 		this._publicKey = null;
 		this._dklsClient = null;
 		this._dklsWalletAddress = null;
+		this._cachedReconstructedKey = null;
 		this._connectionStatus = "disconnected";
 		this.apiClient.clearTokens();
 		this.clearStoredTokens();
@@ -887,16 +999,22 @@ export class NeroMpcSDK {
 			return;
 		}
 
-		try {
-			const walletInfo = await this.apiClient.getWalletInfo();
-			this._publicKey = walletInfo.publicKey;
-			this._partyPublicShares = storedPartyShares;
+		const storedPublicKey = await this.keyManager.getPublicKey();
+		if (!storedPublicKey) {
+			return;
+		}
 
-			this._wallet = this.createSmartWallet(
-				keyShare,
-				this._partyPublicShares,
-				this._publicKey,
-			);
+		this._publicKey = storedPublicKey;
+		this._partyPublicShares = storedPartyShares;
+		this._backendShare = await this.keyManager.getBackendShare();
+
+		this._wallet = this.createSmartWallet(
+			keyShare,
+			this._partyPublicShares,
+			this._publicKey,
+		);
+
+		try {
 			this._cachedWalletInfo = await this._wallet.getWalletInfo();
 		} catch {}
 	}

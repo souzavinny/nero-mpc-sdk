@@ -278,6 +278,84 @@ export class SecureKeyStorage {
 		await this.storage.delete(this.getPartySharesKey(userId));
 	}
 
+	private getPublicKeyStorageKey(userId: string): string {
+		return `publickey:${hashSha256(userId)}`;
+	}
+
+	async storePublicKey(userId: string, publicKey: string): Promise<void> {
+		const encrypted = await encryptWithPassword(publicKey, this.deviceKey);
+		const storedData = {
+			ciphertext: encrypted.ciphertext,
+			iv: encrypted.iv,
+			salt: encrypted.salt,
+			version: ENCRYPTION_VERSION,
+		};
+		await this.storage.set(
+			this.getPublicKeyStorageKey(userId),
+			JSON.stringify(storedData),
+		);
+	}
+
+	async getPublicKey(userId: string): Promise<string | null> {
+		const stored = await this.storage.get(
+			this.getPublicKeyStorageKey(userId),
+		);
+		if (!stored) return null;
+
+		const encryptedData = JSON.parse(stored);
+		if (encryptedData.version !== ENCRYPTION_VERSION) {
+			throw new Error(
+				`Unsupported encryption version: ${encryptedData.version}`,
+			);
+		}
+
+		const encrypted: EncryptionResult = {
+			ciphertext: encryptedData.ciphertext,
+			iv: encryptedData.iv,
+			salt: encryptedData.salt,
+		};
+
+		return await decryptWithPassword(encrypted, this.deviceKey);
+	}
+
+	private getBackendShareKey(userId: string): string {
+		return `backendshare:${hashSha256(userId)}`;
+	}
+
+	async storeBackendShare(userId: string, share: string): Promise<void> {
+		const encrypted = await encryptWithPassword(share, this.deviceKey);
+		const storedData = {
+			ciphertext: encrypted.ciphertext,
+			iv: encrypted.iv,
+			salt: encrypted.salt,
+			version: ENCRYPTION_VERSION,
+		};
+		await this.storage.set(
+			this.getBackendShareKey(userId),
+			JSON.stringify(storedData),
+		);
+	}
+
+	async getBackendShare(userId: string): Promise<string | null> {
+		const stored = await this.storage.get(this.getBackendShareKey(userId));
+		if (!stored) return null;
+
+		const encryptedData = JSON.parse(stored);
+		if (encryptedData.version !== ENCRYPTION_VERSION) {
+			throw new Error(
+				`Unsupported encryption version: ${encryptedData.version}`,
+			);
+		}
+
+		const encrypted: EncryptionResult = {
+			ciphertext: encryptedData.ciphertext,
+			iv: encryptedData.iv,
+			salt: encryptedData.salt,
+		};
+
+		return await decryptWithPassword(encrypted, this.deviceKey);
+	}
+
 	async clearAll(): Promise<void> {
 		await this.storage.clear();
 	}

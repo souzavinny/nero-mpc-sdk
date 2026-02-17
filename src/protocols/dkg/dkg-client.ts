@@ -158,6 +158,7 @@ export class DKGClient {
 
 			this.state.privateShare = finalShare;
 			this.state.publicKey = publicKey;
+			this.state.backendShare = shareResult.backendShare;
 			this.state.round = "complete";
 
 			return {
@@ -189,6 +190,10 @@ export class DKGClient {
 			totalParties: this.state.participantCount,
 			protocolVersion: PROTOCOL_VERSION,
 		};
+	}
+
+	getBackendShare(): string | null {
+		return this.state?.backendShare ?? null;
 	}
 
 	getPartyPublicShares(): Map<number, string> {

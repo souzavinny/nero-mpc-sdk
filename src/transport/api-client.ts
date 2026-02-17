@@ -171,7 +171,7 @@ export class APIClient {
 		code: string,
 		state: string,
 		fingerprint: DeviceFingerprint,
-		options?: { skipWalletGeneration?: boolean },
+		options?: { skipWalletGeneration?: boolean; redirectUri?: string },
 	): Promise<{
 		user: User;
 		tokens: AuthTokens;
@@ -185,6 +185,7 @@ export class APIClient {
 				provider,
 				code,
 				state,
+				redirectUri: options?.redirectUri,
 				deviceId: fingerprint.additionalData,
 				skipWalletGeneration: options?.skipWalletGeneration,
 			},
@@ -477,6 +478,7 @@ export class APIClient {
 		publicKey: string;
 		walletAddress: string;
 		partyId: number;
+		backendShare: string;
 		message: string;
 	}> {
 		return this.request("POST", "/api/v2/dkg/share", {
@@ -542,6 +544,16 @@ export class APIClient {
 		count: number;
 	}> {
 		return this.request("GET", "/api/v2/wallet/list");
+	}
+
+	async getKeyMaterial(
+		ephemeralPublicKey: string,
+		protocol: "pedersen-dkg-v1" | "dkls" = "pedersen-dkg-v1",
+	): Promise<import("../types").KeyMaterialResponse> {
+		return this.request("POST", "/api/v2/wallet/key-material", {
+			ephemeralPublicKey,
+			protocol,
+		});
 	}
 
 	// Backup V2 API Methods
@@ -1259,80 +1271,69 @@ export class APIClient {
 		});
 	}
 
-	async initiateSigningSession(
+	async signingInit(
 		messageHash: string,
-		messageType: "transaction" | "message" | "typed_data",
+		messageType: "transaction" | "message" | "typed_data" = "message",
 	): Promise<{
 		sessionId: string;
-		participatingParties: number[];
+		backendNonceCommitment: {
+			partyId: number;
+			D: string;
+			E: string;
+			proof: string;
+		};
+		enhancedProof?: unknown;
 	}> {
-		return this.request("POST", "/api/mpc/signing/initiate", {
+		return this.request("POST", "/api/v2/wallet/signing/init", {
 			messageHash,
 			messageType,
 		});
 	}
 
-	async submitNonceCommitment(
+	async signingNonce(
 		sessionId: string,
-		partyId: number,
-		commitment: string,
-	): Promise<void> {
-		return this.request("POST", "/api/mpc/signing/nonce-commitment", {
+		clientNonceCommitment: {
+			partyId: number;
+			D: string;
+			E: string;
+			proof: string;
+		},
+	): Promise<{
+		sessionId: string;
+		backendPartialSignature: {
+			partyId: number;
+			sigma: string;
+			publicShare: string;
+			nonceCommitment: string;
+		};
+	}> {
+		return this.request("POST", "/api/v2/wallet/signing/nonce", {
 			sessionId,
-			partyId,
-			commitment,
+			clientNonceCommitment,
 		});
 	}
 
-	async getNonceCommitments(sessionId: string): Promise<{
-		commitments: Map<number, string>;
-		ready: boolean;
-	}> {
-		return this.request(
-			"GET",
-			`/api/mpc/signing/${sessionId}/nonce-commitments`,
-		);
-	}
-
-	async submitPartialSignature(
+	async signingComplete(
 		sessionId: string,
-		partyId: number,
-		partialSignature: {
-			r: string;
-			s: string;
+		clientPartialSignature: {
+			partyId: number;
+			sigma: string;
 			publicShare: string;
 			nonceCommitment: string;
 		},
-	): Promise<void> {
-		return this.request("POST", "/api/mpc/signing/partial", {
+	): Promise<{
+		sessionId: string;
+		signature: string;
+		r: string;
+		s: string;
+		v: number;
+		messageHash: string;
+		walletAddress: string | null;
+	}> {
+		return this.request("POST", "/api/v2/wallet/signing/complete", {
 			sessionId,
-			partyId,
-			partialSignature,
+			clientPartialSignature,
 		});
-	}
-
-	async getPartialSignatures(sessionId: string): Promise<{
-		partials: Array<{
-			partyId: number;
-			s: string;
-			publicShare: string;
-			nonceCommitment: string;
-		}>;
-		ready: boolean;
-	}> {
-		return this.request("GET", `/api/mpc/signing/${sessionId}/partials`);
-	}
-
-	async getSigningResult(sessionId: string): Promise<{
-		complete: boolean;
-		signature?: {
-			r: string;
-			s: string;
-			v: number;
-			fullSignature: string;
-		};
-	}> {
-		return this.request("GET", `/api/mpc/signing/${sessionId}/result`);
 	}
 
 	async getWalletInfo(): Promise<WalletInfo> {

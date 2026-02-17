@@ -79,6 +79,7 @@ export interface DKGSessionState {
 	polynomial?: bigint[];
 	privateShare?: bigint;
 	publicKey?: string;
+	backendShare?: string;
 }
 
 export type SigningRound =
@@ -152,6 +153,31 @@ export interface WalletInfo {
 	smartWalletAddress?: string;
 	publicKey: string;
 	chainId: number;
+}
+
+export interface KeyMaterialResponse {
+	encryptedShare: {
+		fromPartyId: number;
+		toPartyId: number;
+		ephemeralPublicKey: string;
+		ciphertext: string;
+		nonce: string;
+		tag: string;
+	};
+	walletAddress: string;
+	publicKey: string;
+	metadata: {
+		partyId: number;
+		protocol: "pedersen-dkg-v1" | "dkls";
+		sharingType: "additive" | "multiplicative";
+	};
+}
+
+export interface ReconstructedKey {
+	privateKey: string;
+	walletAddress: string;
+	publicKey: string;
+	protocol: "pedersen-dkg-v1" | "dkls";
 }
 
 export type ProtocolMessageType =
