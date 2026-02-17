@@ -2,11 +2,32 @@ import type React from "react";
 import { type ReactNode, useCallback, useEffect } from "react";
 import { useTheme } from "../../react/theme";
 
+const FADE_IN_CSS_ID = "nero-modal-animations";
+
+function injectAnimations() {
+	if (typeof document === "undefined") return;
+	if (document.getElementById(FADE_IN_CSS_ID)) return;
+
+	const style = document.createElement("style");
+	style.id = FADE_IN_CSS_ID;
+	style.textContent = `
+@keyframes nero-overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes nero-modal-slide-up {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}`;
+	document.head.appendChild(style);
+}
+
 export interface ModalProps {
 	isOpen: boolean;
 	onClose: () => void;
 	children: ReactNode;
 	title?: string;
+	onBack?: () => void;
 	closeOnOverlayClick?: boolean;
 	closeOnEscape?: boolean;
 	width?: string;
@@ -17,6 +38,7 @@ export function Modal({
 	onClose,
 	children,
 	title,
+	onBack,
 	closeOnOverlayClick = true,
 	closeOnEscape = true,
 	width = "400px",
@@ -31,6 +53,10 @@ export function Modal({
 		},
 		[closeOnEscape, onClose],
 	);
+
+	useEffect(() => {
+		injectAnimations();
+	}, []);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -59,8 +85,9 @@ export function Modal({
 		display: "flex",
 		alignItems: "center",
 		justifyContent: "center",
-		zIndex: 9999,
+		zIndex: 2147483647,
 		padding: theme.spacing.md,
+		animation: "nero-overlay-fade-in 0.2s ease-out",
 	};
 
 	const modalStyle: React.CSSProperties = {
@@ -72,6 +99,7 @@ export function Modal({
 		maxHeight: "90vh",
 		overflow: "auto",
 		position: "relative",
+		animation: "nero-modal-slide-up 0.25s ease-out",
 	};
 
 	const headerStyle: React.CSSProperties = {
@@ -90,7 +118,7 @@ export function Modal({
 		margin: 0,
 	};
 
-	const closeButtonStyle: React.CSSProperties = {
+	const navButtonStyle: React.CSSProperties = {
 		background: "none",
 		border: "none",
 		cursor: "pointer",
@@ -102,9 +130,41 @@ export function Modal({
 		justifyContent: "center",
 	};
 
+	const standaloneCloseStyle: React.CSSProperties = {
+		...navButtonStyle,
+		position: "absolute",
+		top: theme.spacing.md,
+		right: theme.spacing.md,
+		zIndex: 1,
+	};
+
 	const contentStyle: React.CSSProperties = {
 		padding: theme.spacing.lg,
 	};
+
+	const closeSvg = (
+		<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+			<path
+				d="M15 5L5 15M5 5L15 15"
+				stroke="currentColor"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
+		</svg>
+	);
+
+	const backSvg = (
+		<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+			<path
+				d="M13 4L7 10L13 16"
+				stroke="currentColor"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
+		</svg>
+	);
 
 	return (
 		<div style={overlayStyle} onClick={handleOverlayClick}>
@@ -114,27 +174,38 @@ export function Modal({
 				aria-modal="true"
 				aria-labelledby={title ? "modal-title" : undefined}
 			>
-				{title && (
+				{title ? (
 					<div style={headerStyle}>
+						{onBack ? (
+							<button
+								style={navButtonStyle}
+								onClick={onBack}
+								aria-label="Go back"
+							>
+								{backSvg}
+							</button>
+						) : (
+							<div style={{ width: "28px" }} />
+						)}
 						<h2 id="modal-title" style={titleStyle}>
 							{title}
 						</h2>
 						<button
-							style={closeButtonStyle}
+							style={navButtonStyle}
 							onClick={onClose}
 							aria-label="Close modal"
 						>
-							<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-								<path
-									d="M15 5L5 15M5 5L15 15"
-									stroke="currentColor"
-									strokeWidth="2"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-								/>
-							</svg>
+							{closeSvg}
 						</button>
 					</div>
+				) : (
+					<button
+						style={standaloneCloseStyle}
+						onClick={onClose}
+						aria-label="Close modal"
+					>
+						{closeSvg}
+					</button>
 				)}
 				<div style={contentStyle}>{children}</div>
 			</div>

@@ -23,7 +23,6 @@ export function NeroModal({
 	onLoginError,
 	onLogout,
 	loginTitle,
-	loginSubtitle,
 	logo,
 	explorerUrlPattern,
 }: NeroModalProps): React.ReactElement {
@@ -158,7 +157,6 @@ export function NeroModal({
 				onLogin={handleLogin}
 				providers={providers}
 				title={loginTitle}
-				subtitle={loginSubtitle}
 				logo={logo}
 			/>
 

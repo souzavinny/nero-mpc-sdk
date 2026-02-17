@@ -1,4 +1,5 @@
 import type React from "react";
+import { useState } from "react";
 import type { OAuthProvider } from "../../nero-sdk";
 import { useTheme } from "../../react/theme";
 
@@ -7,6 +8,7 @@ export interface LoginButtonProps {
 	onClick: () => void;
 	isLoading?: boolean;
 	disabled?: boolean;
+	compact?: boolean;
 }
 
 const providerConfig: Partial<
@@ -68,17 +70,52 @@ function AppleIcon() {
 	);
 }
 
-function getProviderIcon(provider: OAuthProvider): React.ReactElement {
-	switch (provider) {
-		case "google":
-			return <GoogleIcon />;
-		case "github":
-			return <GitHubIcon />;
-		case "apple":
-			return <AppleIcon />;
-		default:
-			return <GenericIcon />;
-	}
+function DiscordIcon() {
+	return (
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="#5865F2">
+			<path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+		</svg>
+	);
+}
+
+function LineIcon() {
+	return (
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="#00B900">
+			<path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596a.626.626 0 0 1-.22.04.635.635 0 0 1-.516-.27l-2.443-3.317v2.951c0 .349-.282.63-.631.63a.627.627 0 0 1-.627-.63V8.108c0-.27.173-.51.43-.595a.63.63 0 0 1 .738.225l2.44 3.317V8.108c0-.345.283-.63.63-.63.349 0 .631.285.631.63v4.771zm-5.741 0c0 .349-.282.63-.631.63a.627.627 0 0 1-.627-.63V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.63H4.917c-.345 0-.63-.285-.63-.63V8.108c0-.345.285-.63.63-.63.349 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.122.301.079.766.039 1.068l-.171 1.027c-.053.303-.242 1.186 1.039.647 1.281-.54 6.911-4.069 9.428-6.967C23.547 14.032 24 12.282 24 10.314" />
+		</svg>
+	);
+}
+
+function TwitterIcon() {
+	return (
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+		</svg>
+	);
+}
+
+function FacebookIcon() {
+	return (
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2">
+			<path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+		</svg>
+	);
+}
+
+function LinkedInIcon() {
+	return (
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="#0A66C2">
+			<path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+		</svg>
+	);
+}
+
+function WeChatIcon() {
+	return (
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="#07C160">
+			<path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-7.062-6.122zm-2.18 2.907c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982z" />
+		</svg>
+	);
 }
 
 function GenericIcon() {
@@ -89,14 +126,77 @@ function GenericIcon() {
 	);
 }
 
+function getProviderIcon(provider: OAuthProvider): React.ReactElement {
+	switch (provider) {
+		case "google":
+			return <GoogleIcon />;
+		case "github":
+			return <GitHubIcon />;
+		case "apple":
+			return <AppleIcon />;
+		case "discord":
+			return <DiscordIcon />;
+		case "line":
+			return <LineIcon />;
+		case "twitter":
+			return <TwitterIcon />;
+		case "facebook":
+			return <FacebookIcon />;
+		case "linkedin":
+			return <LinkedInIcon />;
+		case "wechat":
+			return <WeChatIcon />;
+		default:
+			return <GenericIcon />;
+	}
+}
+
 export function LoginButton({
 	provider,
 	onClick,
 	isLoading = false,
 	disabled = false,
+	compact = false,
 }: LoginButtonProps): React.ReactElement {
 	const { theme } = useTheme();
 	const config = providerConfig[provider] ?? defaultProviderConfig;
+	const [hovered, setHovered] = useState(false);
+
+	if (compact) {
+		const compactStyle: React.CSSProperties = {
+			display: "flex",
+			alignItems: "center",
+			justifyContent: "center",
+			width: "48px",
+			height: "48px",
+			backgroundColor: hovered
+				? theme.colors.surfaceHover
+				: "transparent",
+			border: `1px solid ${hovered ? theme.colors.borderFocus : theme.colors.border}`,
+			borderRadius: theme.borderRadius.xl,
+			cursor: disabled || isLoading ? "not-allowed" : "pointer",
+			opacity: disabled || isLoading ? 0.6 : 1,
+			filter: hovered || isLoading ? "none" : "grayscale(1)",
+			transition:
+				"background-color 0.2s, border-color 0.2s, filter 0.3s ease",
+			padding: 0,
+		};
+
+		return (
+			<button
+				onClick={onClick}
+				disabled={disabled || isLoading}
+				style={compactStyle}
+				title={config.name}
+				onMouseEnter={() => {
+					if (!disabled && !isLoading) setHovered(true);
+				}}
+				onMouseLeave={() => setHovered(false)}
+			>
+				{isLoading ? <LoadingSpinner /> : getProviderIcon(provider)}
+			</button>
+		);
+	}
 
 	const buttonStyle: React.CSSProperties = {
 		display: "flex",
@@ -124,8 +224,10 @@ export function LoginButton({
 			style={buttonStyle}
 			onMouseEnter={(e) => {
 				if (!disabled && !isLoading) {
-					e.currentTarget.style.borderColor = theme.colors.borderFocus;
-					e.currentTarget.style.backgroundColor = theme.colors.surfaceHover;
+					e.currentTarget.style.borderColor =
+						theme.colors.borderFocus;
+					e.currentTarget.style.backgroundColor =
+						theme.colors.surfaceHover;
 				}
 			}}
 			onMouseLeave={(e) => {
