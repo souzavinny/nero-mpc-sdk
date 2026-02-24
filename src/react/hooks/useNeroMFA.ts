@@ -81,7 +81,7 @@ export function useNeroMFA(): UseNeroMFAReturn {
 
 	const getStatus = useCallback(async () => {
 		return wrap(async () => {
-			const result = await sdk!.apiClientForHooks.mfaGetStatus();
+			const result = await sdk!.getMFAStatus();
 			setStatus(result);
 			return result;
 		});

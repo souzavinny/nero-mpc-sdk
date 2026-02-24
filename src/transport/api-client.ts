@@ -92,6 +92,7 @@ export class APIClient {
 				data.error?.message ?? "Request failed",
 				data.error?.code ?? "REQUEST_FAILED",
 				response.status,
+				data.error as Record<string, unknown> | undefined,
 			);
 		}
 
@@ -1340,10 +1341,22 @@ export class APIClient {
 		return this.request("GET", "/api/v2/wallet/info");
 	}
 
-	async getPartyPublicShares(): Promise<{
-		shares: Array<{ partyId: number; publicShare: string }>;
+	async signingStatus(sessionId: string): Promise<{
+		sessionId: string;
+		status: string;
+		messageHash: string;
+		messageType: string;
+		result?: {
+			signature: string;
+			r: string;
+			s: string;
+			v: number;
+		};
+		error?: string;
+		createdAt: string;
+		completedAt?: string;
 	}> {
-		return this.request("GET", "/api/wallet/party-shares");
+		return this.request("GET", `/api/v2/wallet/signing/${sessionId}`);
 	}
 
 	// DKLS V2 API Methods

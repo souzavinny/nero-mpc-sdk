@@ -61,10 +61,26 @@ export function NeroMpcAuthProvider({
 	}, [config.backendUrl, config.chainId, autoConnect]);
 
 	useEffect(() => {
-		if (sdk) {
-			setState(sdk.state);
-		}
-	}, [sdk?.isAuthenticated, sdk?.hasWallet, sdk?.user]);
+		if (!sdk || typeof sdk.on !== "function") return;
+
+		const syncState = () => setState(sdk.state);
+
+		sdk.on("connected", syncState);
+		sdk.on("disconnected", syncState);
+		sdk.on("login", syncState);
+		sdk.on("logout", syncState);
+		sdk.on("chain_changed", syncState);
+		sdk.on("initialized", syncState);
+
+		return () => {
+			sdk.off("connected", syncState);
+			sdk.off("disconnected", syncState);
+			sdk.off("login", syncState);
+			sdk.off("logout", syncState);
+			sdk.off("chain_changed", syncState);
+			sdk.off("initialized", syncState);
+		};
+	}, [sdk]);
 
 	const contextValue = useMemo<NeroMpcAuthContextValue>(
 		() => ({

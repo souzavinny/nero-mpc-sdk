@@ -1,18 +1,18 @@
 import { useCallback, useState } from "react";
-import type { Signature, WalletInfo } from "../../types";
+import type { WalletInfo } from "../../types";
 import { useNeroMpcAuthContext } from "../context";
 
 export interface UseNeroWalletReturn {
 	wallet: WalletInfo | null;
 	hasWallet: boolean;
 	generateWallet: () => Promise<WalletInfo>;
-	signMessage: (message: string) => Promise<Signature>;
+	signMessage: (message: string) => Promise<string>;
 	signTypedData: (
 		domain: Record<string, unknown>,
 		types: Record<string, Array<{ name: string; type: string }>>,
 		primaryType: string,
 		value: Record<string, unknown>,
-	) => Promise<Signature>;
+	) => Promise<string>;
 	isGenerating: boolean;
 	isSigning: boolean;
 	error: Error | null;
@@ -45,8 +45,8 @@ export function useNeroWallet(): UseNeroWalletReturn {
 	}, [sdk]);
 
 	const signMessage = useCallback(
-		async (message: string): Promise<Signature> => {
-			if (!sdk?.wallet) {
+		async (message: string): Promise<string> => {
+			if (!sdk || !state.hasWallet) {
 				throw new Error("Wallet not available");
 			}
 
@@ -54,8 +54,7 @@ export function useNeroWallet(): UseNeroWalletReturn {
 			setError(null);
 
 			try {
-				const result = await sdk.wallet.signMessage(message);
-				return result;
+				return await sdk.signMessage(message);
 			} catch (err) {
 				const error = err instanceof Error ? err : new Error(String(err));
 				setError(error);
@@ -64,7 +63,7 @@ export function useNeroWallet(): UseNeroWalletReturn {
 				setIsSigning(false);
 			}
 		},
-		[sdk],
+		[sdk, state.hasWallet],
 	);
 
 	const signTypedData = useCallback(
@@ -73,8 +72,8 @@ export function useNeroWallet(): UseNeroWalletReturn {
 			types: Record<string, Array<{ name: string; type: string }>>,
 			primaryType: string,
 			value: Record<string, unknown>,
-		): Promise<Signature> => {
-			if (!sdk?.wallet) {
+		): Promise<string> => {
+			if (!sdk || !state.hasWallet) {
 				throw new Error("Wallet not available");
 			}
 
@@ -82,13 +81,7 @@ export function useNeroWallet(): UseNeroWalletReturn {
 			setError(null);
 
 			try {
-				const result = await sdk.wallet.signTypedData(
-					domain,
-					types,
-					primaryType,
-					value,
-				);
-				return result;
+				return await sdk.signTypedData(domain, types, primaryType, value);
 			} catch (err) {
 				const error = err instanceof Error ? err : new Error(String(err));
 				setError(error);
@@ -97,7 +90,7 @@ export function useNeroWallet(): UseNeroWalletReturn {
 				setIsSigning(false);
 			}
 		},
-		[sdk],
+		[sdk, state.hasWallet],
 	);
 
 	return {
