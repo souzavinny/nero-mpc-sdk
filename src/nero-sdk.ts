@@ -461,6 +461,13 @@ export class NeroMpcSDK {
 		}
 
 		await this.initializeWallet();
+
+		if (this.hasWallet) {
+			await this.connect();
+		}
+
+		this.emit("login", { user: result.user });
+
 		return result;
 	}
 
@@ -1232,11 +1239,9 @@ export class NeroMpcSDK {
 		const plaintext = JSON.stringify(tokens);
 
 		if (this.deviceKey) {
-			try {
-				const encrypted = await encryptWithPassword(plaintext, this.deviceKey);
-				localStorage.setItem(tokenKey, JSON.stringify(encrypted));
-				return;
-			} catch {}
+			const encrypted = await encryptWithPassword(plaintext, this.deviceKey);
+			localStorage.setItem(tokenKey, JSON.stringify(encrypted));
+			return;
 		}
 
 		localStorage.setItem(tokenKey, plaintext);

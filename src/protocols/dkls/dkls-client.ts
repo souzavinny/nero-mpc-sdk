@@ -165,9 +165,14 @@ export class DKLSClient {
 				error.statusCode === 409 &&
 				error.code === "SIGNING_SESSION_CONFLICT"
 			) {
-				try {
-					await this.apiClient.dklsSigningCancel(request.dkgSessionId);
-				} catch {}
+				const activeSessionId = error.details?.activeSessionId as
+					| string
+					| undefined;
+				if (activeSessionId) {
+					try {
+						await this.apiClient.dklsSigningCancel(activeSessionId);
+					} catch {}
+				}
 				return await this.executeSigningFlow(keyShare, request);
 			}
 			throw new SDKError(

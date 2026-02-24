@@ -92,6 +92,7 @@ export class APIClient {
 				data.error?.message ?? "Request failed",
 				data.error?.code ?? "REQUEST_FAILED",
 				response.status,
+				data.error as Record<string, unknown> | undefined,
 			);
 		}
 

@@ -552,6 +552,7 @@ export class SDKError extends Error {
 		message: string,
 		public code: SDKErrorCode,
 		public statusCode?: number,
+		public details?: Record<string, unknown>,
 	) {
 		super(message);
 		this.name = "SDKError";
