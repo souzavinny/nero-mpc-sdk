@@ -3,6 +3,10 @@ import { BUILTIN_CHAINS, getChainConfig } from "./chains/configs";
 import type { ChainConfig } from "./chains/types";
 import { type EIP1193Provider, NeroProvider } from "./core";
 import { ClientKeyManager, generateDeviceKey } from "./core/client-key-manager";
+import {
+	decryptWithPassword,
+	encryptWithPassword,
+} from "./core/crypto-primitives";
 import type {
 	TypedDataDomain,
 	TypedDataMessage,
@@ -34,15 +38,19 @@ import type {
 	Factor,
 	FactorType,
 	KeyMaterialResponse,
+	MFAStatus,
 	ReconstructedKey,
 	RecoveryAttempt,
 	RecoveryMethod,
 	RecoveryMethodType,
 	SDKConfig,
+	SDKEvent,
+	SDKEventMap,
 	SessionReconnectResult,
 	SessionStatus,
 	StorageAdapter,
 	User,
+	UserProfile,
 	WalletInfo,
 } from "./types";
 import { SDKError } from "./types";
@@ -112,6 +120,9 @@ export class NeroMpcSDK {
 	private _dklsClient: DKLSClient | null = null;
 	private _dklsWalletAddress: string | null = null;
 	private _cachedReconstructedKey: ReconstructedKey | null = null;
+	private _eventListeners: Map<string, Set<(...args: unknown[]) => void>> =
+		new Map();
+	private _apiClientForHooksWarned = false;
 
 	constructor(config: SDKConfig) {
 		this.config = {
@@ -166,7 +177,14 @@ export class NeroMpcSDK {
 		return this._provider;
 	}
 
+	/** @deprecated Use SDK methods (getMFAStatus, getUserProfile, etc.) instead. Will be removed in v3. */
 	get apiClientForHooks(): APIClient {
+		if (!this._apiClientForHooksWarned) {
+			console.warn(
+				"[NeroMpcSDK] apiClientForHooks is deprecated. Use SDK methods instead.",
+			);
+			this._apiClientForHooksWarned = true;
+		}
 		return this.apiClient;
 	}
 
@@ -182,6 +200,41 @@ export class NeroMpcSDK {
 		};
 	}
 
+	get isLoggedIn(): boolean {
+		return this.isAuthenticated;
+	}
+
+	on<E extends SDKEvent>(
+		event: E,
+		listener: (data: SDKEventMap[E]) => void,
+	): void {
+		if (!this._eventListeners.has(event)) {
+			this._eventListeners.set(event, new Set());
+		}
+		this._eventListeners
+			.get(event)!
+			.add(listener as (...args: unknown[]) => void);
+	}
+
+	off<E extends SDKEvent>(
+		event: E,
+		listener: (data: SDKEventMap[E]) => void,
+	): void {
+		this._eventListeners
+			.get(event)
+			?.delete(listener as (...args: unknown[]) => void);
+	}
+
+	private emit<E extends SDKEvent>(event: E, data: SDKEventMap[E]): void {
+		const listeners = this._eventListeners.get(event);
+		if (!listeners) return;
+		for (const listener of listeners) {
+			try {
+				listener(data);
+			} catch {}
+		}
+	}
+
 	async getWalletInfo(): Promise<WalletInfo | null> {
 		if (!this._wallet) return null;
 		this._cachedWalletInfo = await this._wallet.getWalletInfo();
@@ -189,7 +242,7 @@ export class NeroMpcSDK {
 	}
 
 	async initialize(): Promise<void> {
-		this.deviceKey = this.loadOrGenerateDeviceKey();
+		this.deviceKey = await this.loadOrGenerateDeviceKey();
 
 		if (!this.config.deviceId) {
 			this.apiClient.setDeviceId(this.deviceKey);
@@ -199,7 +252,7 @@ export class NeroMpcSDK {
 			storagePrefix: this.config.storagePrefix,
 		});
 
-		const storedTokens = this.loadStoredTokens();
+		const storedTokens = await this.loadStoredTokens();
 		if (storedTokens) {
 			this.apiClient.setTokens(storedTokens);
 
@@ -211,6 +264,8 @@ export class NeroMpcSDK {
 				this.clearStoredTokens();
 			}
 		}
+
+		this.emit("initialized", undefined);
 	}
 
 	async getOAuthUrl(
@@ -237,7 +292,7 @@ export class NeroMpcSDK {
 		);
 
 		this._user = result.user;
-		this.storeTokens(result.tokens);
+		await this.storeTokens(result.tokens);
 
 		if (this.keyManager && this._user) {
 			await this.keyManager.initialize(this._user.id);
@@ -251,6 +306,7 @@ export class NeroMpcSDK {
 					this._dklsWalletAddress = result.wallet.eoaAddress;
 					await this.connect();
 				} else {
+					this.emit("login", { user: result.user });
 					return { user: result.user, requiresDKG: true };
 				}
 			} else {
@@ -258,10 +314,13 @@ export class NeroMpcSDK {
 				if (this._wallet) {
 					await this.connect();
 				} else {
+					this.emit("login", { user: result.user });
 					return { user: result.user, requiresDKG: true };
 				}
 			}
 		}
+
+		this.emit("login", { user: result.user });
 
 		return {
 			user: result.user,
@@ -317,7 +376,7 @@ export class NeroMpcSDK {
 	): Promise<{ user: User; requiresDKG: boolean }> {
 		const result = await this.apiClient.verifyEmailAuth(email, code);
 		this._user = result.user;
-		this.storeTokens(result.tokens);
+		await this.storeTokens(result.tokens);
 
 		if (this.keyManager && this._user) {
 			await this.keyManager.initialize(this._user.id);
@@ -326,6 +385,8 @@ export class NeroMpcSDK {
 		if (!result.requiresDKG) {
 			await this.initializeWallet();
 		}
+
+		this.emit("login", { user: result.user });
 
 		return { user: result.user, requiresDKG: result.requiresDKG };
 	}
@@ -342,7 +403,7 @@ export class NeroMpcSDK {
 	): Promise<{ user: User; requiresDKG: boolean }> {
 		const result = await this.apiClient.verifyPhoneOTP(phoneNumber, code);
 		this._user = result.user;
-		this.storeTokens(result.tokens);
+		await this.storeTokens(result.tokens);
 
 		if (this.keyManager && this._user) {
 			await this.keyManager.initialize(this._user.id);
@@ -351,6 +412,8 @@ export class NeroMpcSDK {
 		if (!result.requiresDKG) {
 			await this.initializeWallet();
 		}
+
+		this.emit("login", { user: result.user });
 
 		return { user: result.user, requiresDKG: result.requiresDKG };
 	}
@@ -360,7 +423,7 @@ export class NeroMpcSDK {
 	): Promise<{ user: User; requiresDKG: boolean }> {
 		const result = await this.apiClient.customLogin(options);
 		this._user = result.user;
-		this.storeTokens(result.tokens);
+		await this.storeTokens(result.tokens);
 
 		if (this.keyManager && this._user) {
 			await this.keyManager.initialize(this._user.id);
@@ -370,6 +433,8 @@ export class NeroMpcSDK {
 			await this.initializeWallet();
 		}
 
+		this.emit("login", { user: result.user });
+
 		return { user: result.user, requiresDKG: result.requiresDKG };
 	}
 
@@ -378,7 +443,8 @@ export class NeroMpcSDK {
 	}
 
 	async reconnectSession(dappShare?: string): Promise<SessionReconnectResult> {
-		const share = dappShare ?? this.loadStoredTokens()?.dappShare;
+		const storedTokens = await this.loadStoredTokens();
+		const share = dappShare ?? storedTokens?.dappShare;
 		if (!share) {
 			throw new SDKError(
 				"No dApp share available for reconnect",
@@ -388,7 +454,7 @@ export class NeroMpcSDK {
 
 		const result = await this.apiClient.sessionReconnect(share);
 		this._user = result.user;
-		this.storeTokens(result.tokens);
+		await this.storeTokens(result.tokens);
 
 		if (this.keyManager && this._user) {
 			await this.keyManager.initialize(this._user.id);
@@ -615,6 +681,8 @@ export class NeroMpcSDK {
 		if (this.wsClient) {
 			this.wsClient.disconnect();
 		}
+
+		this.emit("logout", undefined);
 	}
 
 	async connect(): Promise<EIP1193Provider> {
@@ -627,6 +695,7 @@ export class NeroMpcSDK {
 		}
 
 		this._connectionStatus = "connecting";
+		this.emit("connecting", undefined);
 
 		try {
 			this._provider = new NeroProvider({
@@ -641,10 +710,14 @@ export class NeroMpcSDK {
 
 			this._provider.connect();
 			this._connectionStatus = "connected";
+			this.emit("connected", { chainId: this._chainId });
 
 			return this._provider;
 		} catch (error) {
 			this._connectionStatus = "errored";
+			this.emit("errored", {
+				error: error instanceof Error ? error : new Error(String(error)),
+			});
 			throw error;
 		}
 	}
@@ -654,6 +727,7 @@ export class NeroMpcSDK {
 			this._provider.disconnect();
 		}
 		this._connectionStatus = "disconnected";
+		this.emit("disconnected", undefined);
 		await this.logout();
 	}
 
@@ -700,6 +774,8 @@ export class NeroMpcSDK {
 				this._cachedWalletInfo = await this._wallet.getWalletInfo();
 			}
 		}
+
+		this.emit("chain_changed", { chainId });
 	}
 
 	addChain(config: ChainConfig): void {
@@ -719,6 +795,69 @@ export class NeroMpcSDK {
 		const builtinIds = Array.from(BUILTIN_CHAINS.keys());
 		const customIds = Array.from(this._customChains.keys());
 		return [...new Set([...builtinIds, ...customIds])];
+	}
+
+	async signMessage(message: string | Uint8Array): Promise<string> {
+		return this.signMessageInternal(message);
+	}
+
+	async signTypedData(
+		domain: Record<string, unknown>,
+		types: Record<string, Array<{ name: string; type: string }>>,
+		primaryType: string,
+		value: Record<string, unknown>,
+	): Promise<string> {
+		return this.signTypedDataInternal(
+			domain as TypedDataDomain,
+			types as TypedDataTypes,
+			primaryType,
+			value as TypedDataMessage,
+		);
+	}
+
+	async enableMFA(options?: { type?: "totp" | "webauthn" }): Promise<{
+		methodId: string;
+	}> {
+		const type = options?.type ?? "totp";
+		if (type === "webauthn") {
+			const result = await this.apiClient.mfaWebAuthnSetup();
+			return { methodId: result.methodId };
+		}
+		const result = await this.apiClient.mfaTotpSetup();
+		return { methodId: result.methodId };
+	}
+
+	async getKeyDetails(): Promise<{
+		threshold: number;
+		totalShares: number;
+		protocol: string;
+		securityLevel: string;
+		hasLocalShare: boolean;
+	}> {
+		const info = await this.apiClient.getWalletInfoV2();
+		let hasLocalShare = false;
+		if (this._protocol === "dkls") {
+			const dklsClient = this.getOrCreateDKLSClient();
+			hasLocalShare = await dklsClient.hasKeyShare();
+		} else if (this.keyManager) {
+			const share = await this.keyManager.getKeyShare();
+			hasLocalShare = share !== null;
+		}
+		return {
+			threshold: info.mpc.threshold,
+			totalShares: info.mpc.totalParties,
+			protocol: info.mpc.protocolVersion,
+			securityLevel: info.mpc.securityLevel,
+			hasLocalShare,
+		};
+	}
+
+	async getMFAStatus(): Promise<MFAStatus> {
+		return this.apiClient.mfaGetStatus();
+	}
+
+	async getUserProfile(): Promise<{ profile: UserProfile }> {
+		return this.apiClient.userGetProfile();
 	}
 
 	private getAccounts(): string[] {
@@ -1044,49 +1183,88 @@ export class NeroMpcSDK {
 		};
 	}
 
-	private loadOrGenerateDeviceKey(): string {
+	private async loadOrGenerateDeviceKey(): Promise<string> {
 		const storageKey = `${this.config.storagePrefix}:device_key`;
+		const prefix = this.config.storagePrefix ?? "nero";
+		const isIndexedDBAvailable =
+			typeof indexedDB !== "undefined" && indexedDB !== null;
+
+		if (isIndexedDBAvailable) {
+			try {
+				const idbStorage = new IndexedDBStorage(prefix);
+				const stored = await idbStorage.get("device_key");
+				if (stored) {
+					return stored;
+				}
+
+				if (typeof localStorage !== "undefined") {
+					const legacyKey = localStorage.getItem(storageKey);
+					if (legacyKey) {
+						await idbStorage.set("device_key", legacyKey);
+						return legacyKey;
+					}
+				}
+
+				const newKey = generateDeviceKey();
+				await idbStorage.set("device_key", newKey);
+				return newKey;
+			} catch {}
+		}
 
 		if (typeof localStorage !== "undefined") {
 			const stored = localStorage.getItem(storageKey);
 			if (stored) {
 				return stored;
 			}
-		}
 
-		const newKey = generateDeviceKey();
-
-		if (typeof localStorage !== "undefined") {
+			const newKey = generateDeviceKey();
 			localStorage.setItem(storageKey, newKey);
+			return newKey;
 		}
 
-		return newKey;
+		return generateDeviceKey();
 	}
 
-	private storeTokens(tokens: AuthTokens): void {
-		if (typeof localStorage !== "undefined") {
-			localStorage.setItem(
-				`${this.config.storagePrefix}:tokens`,
-				JSON.stringify(tokens),
-			);
+	private async storeTokens(tokens: AuthTokens): Promise<void> {
+		if (typeof localStorage === "undefined") return;
+
+		const tokenKey = `${this.config.storagePrefix}:tokens`;
+		const plaintext = JSON.stringify(tokens);
+
+		if (this.deviceKey) {
+			try {
+				const encrypted = await encryptWithPassword(plaintext, this.deviceKey);
+				localStorage.setItem(tokenKey, JSON.stringify(encrypted));
+				return;
+			} catch {}
 		}
+
+		localStorage.setItem(tokenKey, plaintext);
 	}
 
-	private loadStoredTokens(): AuthTokens | null {
-		if (typeof localStorage === "undefined") {
-			return null;
-		}
+	private async loadStoredTokens(): Promise<AuthTokens | null> {
+		if (typeof localStorage === "undefined") return null;
 
 		const stored = localStorage.getItem(`${this.config.storagePrefix}:tokens`);
-		if (!stored) {
-			return null;
-		}
+		if (!stored) return null;
 
 		try {
-			return JSON.parse(stored);
-		} catch {
-			return null;
-		}
+			const parsed = JSON.parse(stored);
+			if (parsed && typeof parsed === "object" && "accessToken" in parsed) {
+				return parsed;
+			}
+			if (
+				parsed &&
+				typeof parsed === "object" &&
+				"ciphertext" in parsed &&
+				this.deviceKey
+			) {
+				const decrypted = await decryptWithPassword(parsed, this.deviceKey);
+				return JSON.parse(decrypted);
+			}
+		} catch {}
+
+		return null;
 	}
 
 	private clearStoredTokens(): void {

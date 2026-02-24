@@ -506,10 +506,51 @@ export interface AggregateVerifierRule {
 	updatedAt: string;
 }
 
+export type SDKErrorCode =
+	| "SIGNING_SESSION_CONFLICT"
+	| "NOT_AUTHENTICATED"
+	| "NO_WALLET"
+	| "NO_KEY_SHARE"
+	| "NOT_INITIALIZED"
+	| "DKG_FAILED"
+	| "KEY_SHARE_ERROR"
+	| "NO_DAPP_SHARE"
+	| "UNSUPPORTED_CHAIN"
+	| "NO_REFRESH_TOKEN"
+	| "TOKEN_REFRESH_FAILED"
+	| "REQUEST_FAILED"
+	| "DKLS_KEYGEN_FAILED"
+	| "DKLS_SIGNING_FAILED"
+	| "NO_DKG_SESSION_ID"
+	| "MISSING_DKG_SESSION_ID"
+	| "MFA_SETUP_FAILED"
+	| (string & {});
+
+export type SDKEvent =
+	| "connected"
+	| "disconnected"
+	| "connecting"
+	| "errored"
+	| "chain_changed"
+	| "initialized"
+	| "login"
+	| "logout";
+
+export interface SDKEventMap {
+	connected: { chainId: number };
+	disconnected: undefined;
+	connecting: undefined;
+	errored: { error: Error };
+	chain_changed: { chainId: number };
+	initialized: undefined;
+	login: { user: User };
+	logout: undefined;
+}
+
 export class SDKError extends Error {
 	constructor(
 		message: string,
-		public code: string,
+		public code: SDKErrorCode,
 		public statusCode?: number,
 	) {
 		super(message);

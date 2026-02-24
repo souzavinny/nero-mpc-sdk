@@ -158,79 +158,18 @@ export class DKLSClient {
 		}
 
 		try {
-			const initResult = await this.apiClient.dklsSigningInit({
-				messageHash: request.messageHash,
-				messageType: request.messageType || "message",
-				dkgSessionId: request.dkgSessionId,
-			});
-
-			const { state, nonceCommitment } = signingInit(
-				keyShare,
-				request.messageHash,
-			);
-			this.signingState = state;
-
-			this.signingState = signingStoreBackendCommitment(
-				this.signingState,
-				initResult.backendNonceCommitment,
-			);
-
-			const nonceResult = await this.apiClient.dklsSigningNonce(
-				initResult.sessionId,
-				nonceCommitment,
-			);
-
-			this.signingState = signingProcessBackendNonce(
-				this.signingState,
-				nonceResult.backendNonceReveal,
-			);
-
-			const { mtaState, mta1Setup, mta2Setup } = initMtAForSigning(
-				this.signingState,
-			);
-			this.mtaState = mtaState;
-
-			const mtaRound1Result = await this.apiClient.dklsMtaRound1(
-				initResult.sessionId,
-				mta1Setup,
-				mta2Setup,
-			);
-
-			const {
-				mtaState: updatedMtaState,
-				mta1Encrypted,
-				mta2Encrypted,
-			} = processMtARound2Response(
-				this.mtaState,
-				mtaRound1Result.mta1Response,
-				mtaRound1Result.mta2Response,
-			);
-			this.mtaState = updatedMtaState;
-
-			await this.apiClient.dklsMtaRound2(
-				initResult.sessionId,
-				mta1Encrypted,
-				mta2Encrypted,
-			);
-
-			const clientPartialSignature = computeClientPartialSignature(
-				this.signingState,
-				this.mtaState,
-			);
-
-			const result = await this.apiClient.dklsSigningPartial(
-				initResult.sessionId,
-				clientPartialSignature,
-			);
-
-			return {
-				signature: result.signature,
-				r: result.r,
-				s: result.s,
-				v: result.v,
-				messageHash: request.messageHash,
-			};
+			return await this.executeSigningFlow(keyShare, request);
 		} catch (error) {
+			if (
+				error instanceof SDKError &&
+				error.statusCode === 409 &&
+				error.code === "SIGNING_SESSION_CONFLICT"
+			) {
+				try {
+					await this.apiClient.dklsSigningCancel(request.dkgSessionId);
+				} catch {}
+				return await this.executeSigningFlow(keyShare, request);
+			}
 			throw new SDKError(
 				error instanceof Error ? error.message : "DKLS signing failed",
 				"DKLS_SIGNING_FAILED",
@@ -239,6 +178,84 @@ export class DKLSClient {
 			this.signingState = null;
 			this.mtaState = null;
 		}
+	}
+
+	private async executeSigningFlow(
+		keyShare: DKLSKeyShare,
+		request: DKLSSignRequest,
+	): Promise<DKLSSigningResult> {
+		const initResult = await this.apiClient.dklsSigningInit({
+			messageHash: request.messageHash,
+			messageType: request.messageType || "message",
+			dkgSessionId: request.dkgSessionId,
+		});
+
+		const { state, nonceCommitment } = signingInit(
+			keyShare,
+			request.messageHash,
+		);
+		this.signingState = state;
+
+		this.signingState = signingStoreBackendCommitment(
+			this.signingState,
+			initResult.backendNonceCommitment,
+		);
+
+		const nonceResult = await this.apiClient.dklsSigningNonce(
+			initResult.sessionId,
+			nonceCommitment,
+		);
+
+		this.signingState = signingProcessBackendNonce(
+			this.signingState,
+			nonceResult.backendNonceReveal,
+		);
+
+		const { mtaState, mta1Setup, mta2Setup } = initMtAForSigning(
+			this.signingState,
+		);
+		this.mtaState = mtaState;
+
+		const mtaRound1Result = await this.apiClient.dklsMtaRound1(
+			initResult.sessionId,
+			mta1Setup,
+			mta2Setup,
+		);
+
+		const {
+			mtaState: updatedMtaState,
+			mta1Encrypted,
+			mta2Encrypted,
+		} = processMtARound2Response(
+			this.mtaState,
+			mtaRound1Result.mta1Response,
+			mtaRound1Result.mta2Response,
+		);
+		this.mtaState = updatedMtaState;
+
+		await this.apiClient.dklsMtaRound2(
+			initResult.sessionId,
+			mta1Encrypted,
+			mta2Encrypted,
+		);
+
+		const clientPartialSignature = computeClientPartialSignature(
+			this.signingState,
+			this.mtaState,
+		);
+
+		const result = await this.apiClient.dklsSigningPartial(
+			initResult.sessionId,
+			clientPartialSignature,
+		);
+
+		return {
+			signature: result.signature,
+			r: result.r,
+			s: result.s,
+			v: result.v,
+			messageHash: request.messageHash,
+		};
 	}
 
 	async signMessage(message: string): Promise<DKLSSigningResult> {

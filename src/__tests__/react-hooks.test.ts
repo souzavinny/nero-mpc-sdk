@@ -59,6 +59,8 @@ const createMockSDK = (overrides = {}) => ({
 		address: "0x1234567890abcdef1234567890abcdef12345678",
 		publicKey: "0xpubkey",
 	}),
+	signMessage: vi.fn().mockResolvedValue("0xfullsig"),
+	signTypedData: vi.fn().mockResolvedValue("0xfullsig"),
 	wallet: {
 		signMessage: vi.fn().mockResolvedValue({
 			r: "0xr",
@@ -73,6 +75,12 @@ const createMockSDK = (overrides = {}) => ({
 			fullSignature: "0xfullsig",
 		}),
 	},
+	on: vi.fn(),
+	off: vi.fn(),
+	getMFAStatus: vi
+		.fn()
+		.mockResolvedValue({ enabled: false, methods: [], policy: null }),
+	getUserProfile: vi.fn().mockResolvedValue({ profile: {} }),
 	state: { ...DEFAULT_STATE, isInitialized: true },
 	isAuthenticated: false,
 	hasWallet: false,
