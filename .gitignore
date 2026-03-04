@@ -6,3 +6,6 @@ coverage/
 *.log
 *.tsbuildinfo
 .DS_Store
+
+**/CLAUDE.md
+!.claude/CLAUDE.md
