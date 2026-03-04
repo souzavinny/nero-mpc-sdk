@@ -227,7 +227,6 @@ export interface CustomLoginOptions {
 	idToken: string;
 	deviceId?: string;
 	deviceName?: string;
-	skipWalletGeneration?: boolean;
 }
 
 export interface OAuthProviderInfo {

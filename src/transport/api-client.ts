@@ -172,7 +172,7 @@ export class APIClient {
 		code: string,
 		state: string,
 		fingerprint: DeviceFingerprint,
-		options?: { skipWalletGeneration?: boolean; redirectUri?: string },
+		options?: { redirectUri?: string },
 	): Promise<{
 		user: User;
 		tokens: AuthTokens;
@@ -188,7 +188,6 @@ export class APIClient {
 				state,
 				redirectUri: options?.redirectUri,
 				deviceId: fingerprint.additionalData,
-				skipWalletGeneration: options?.skipWalletGeneration,
 			},
 			false,
 		);
@@ -333,7 +332,6 @@ export class APIClient {
 				id_token: options.idToken,
 				deviceId: options.deviceId,
 				deviceName: options.deviceName,
-				skipWalletGeneration: options.skipWalletGeneration,
 			},
 			false,
 		);

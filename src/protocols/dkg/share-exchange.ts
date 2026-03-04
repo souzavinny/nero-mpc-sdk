@@ -1,4 +1,5 @@
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils";
 import { CURVE_ORDER, hexToScalar, mod, scalarToHex } from "./polynomial";
@@ -30,8 +31,9 @@ async function deriveSharedSecret(
 ): Promise<Uint8Array> {
 	const pubPoint = secp256k1.ProjectivePoint.fromHex(publicKey);
 	const sharedPoint = pubPoint.multiply(privateKey);
-	const sharedBytes = hexToBytes(sharedPoint.toHex(true));
-	return sha256(sharedBytes);
+	const affine = sharedPoint.toAffine();
+	const xCoord = hexToBytes(affine.x.toString(16).padStart(64, "0"));
+	return hkdf(sha256, xCoord, undefined, "nero-mpc:ecdh:share-exchange", 32);
 }
 
 async function aesGcmEncrypt(

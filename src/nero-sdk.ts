@@ -132,7 +132,7 @@ export class NeroMpcSDK {
 			...config,
 		};
 
-		this._protocol = this.config.protocol ?? "pedersen";
+		this._protocol = this.config.protocol ?? "dkls";
 		this._chainId = this.config.chainId!;
 		this.apiClient = new APIClient(this.config);
 		this.chainManager = new ChainManager(this._chainId);
@@ -288,7 +288,7 @@ export class NeroMpcSDK {
 			code,
 			state,
 			fingerprint,
-			{ skipWalletGeneration: true, redirectUri },
+			{ redirectUri },
 		);
 
 		this._user = result.user;
