@@ -16,12 +16,24 @@ import { NeroMpcSDK } from "@nerochain/mpc-sdk";
 const sdk = new NeroMpcSDK({
   backendUrl: "https://your-api.example.com",
   chainId: 689, // NERO Testnet
+  // protocol defaults to "dkls"; use "pedersen" for legacy Pedersen DKG
 });
 
-await sdk.init();
-await sdk.connect("google");
+await sdk.initialize();
 
-const address = await sdk.getAccounts();
+// 1. Authenticate via OAuth
+const { url } = await sdk.getOAuthUrl("google", window.location.href);
+window.location.href = url;
+
+// 2. Handle the callback (after redirect)
+const { user, requiresDKG } = await sdk.handleOAuthCallback(provider, code, state);
+
+// 3. Generate wallet if first login
+if (requiresDKG) {
+  const wallet = await sdk.generateWallet();
+}
+
+// 4. Sign messages
 const signature = await sdk.signMessage("Hello NERO");
 ```
 
@@ -66,8 +78,8 @@ function Wallet() {
 ## Features
 
 - **Social Login** - Google, GitHub, Apple, and more via OAuth
-- **MPC-TSS** - Threshold signatures with 2-of-3 key shares
-- **DKLS Protocol** - True threshold ECDSA (key never reconstructed on server)
+- **DKLS Protocol (Default)** - 2-party threshold ECDSA (key never reconstructed on server)
+- **Pedersen DKG** - Legacy protocol, available via `protocol: "pedersen"`
 - **ERC-4337** - Smart account support with bundler and paymaster
 - **Multi-Chain** - NERO Chain, Ethereum, Polygon, Arbitrum, Base
 - **React Hooks** - `useNeroConnect`, `useNeroUser`, `useNeroWallet`, and more
