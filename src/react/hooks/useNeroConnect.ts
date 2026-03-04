@@ -57,12 +57,22 @@ export function useNeroConnect(): UseNeroConnectReturn {
 	);
 
 	const handleCallback = useCallback(
-		async (provider: OAuthProvider, code: string, state: string, redirectUri?: string) => {
+		async (
+			provider: OAuthProvider,
+			code: string,
+			state: string,
+			redirectUri?: string,
+		) => {
 			if (!sdk) throw new Error("SDK not initialized");
 			setIsConnecting(true);
 			setError(null);
 			try {
-				return await sdk.handleOAuthCallback(provider, code, state, redirectUri);
+				return await sdk.handleOAuthCallback(
+					provider,
+					code,
+					state,
+					redirectUri,
+				);
 			} catch (err) {
 				const e = err instanceof Error ? err : new Error(String(err));
 				setError(e);

@@ -297,9 +297,7 @@ export class SecureKeyStorage {
 	}
 
 	async getPublicKey(userId: string): Promise<string | null> {
-		const stored = await this.storage.get(
-			this.getPublicKeyStorageKey(userId),
-		);
+		const stored = await this.storage.get(this.getPublicKeyStorageKey(userId));
 		if (!stored) return null;
 
 		const encryptedData = JSON.parse(stored);

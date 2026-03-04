@@ -114,9 +114,7 @@ export function LoginModal({
 				<AllWalletsView
 					detectedWallets={detectedWallets}
 					onWalletConnect={onWalletConnect}
-					onWalletDetail={(wallet) =>
-						setView({ type: "walletDetail", wallet })
-					}
+					onWalletDetail={(wallet) => setView({ type: "walletDetail", wallet })}
 				/>
 				<Footer theme={theme} />
 			</Modal>
@@ -192,8 +190,7 @@ export function LoginModal({
 							onClick={() => handleLogin(provider)}
 							isLoading={loadingProvider === provider}
 							disabled={
-								loadingProvider !== null &&
-								loadingProvider !== provider
+								loadingProvider !== null && loadingProvider !== provider
 							}
 							compact
 						/>
@@ -210,9 +207,7 @@ export function LoginModal({
 									name={wallet.info.name}
 									icon={wallet.info.icon}
 									badge="Installed"
-									onClick={() =>
-										onWalletConnect?.(wallet)
-									}
+									onClick={() => onWalletConnect?.(wallet)}
 								/>
 							))}
 							{showAllWalletsRow && (

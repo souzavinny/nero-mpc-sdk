@@ -1,8 +1,8 @@
 import type React from "react";
 import { useMemo } from "react";
 import { useTheme } from "../../react/theme";
+import { KNOWN_WALLETS, type KnownWallet } from "../utils/known-wallets";
 import type { DetectedWallet } from "../utils/wallet-discovery";
-import { type KnownWallet, KNOWN_WALLETS } from "../utils/known-wallets";
 import { WalletRow } from "./WalletRow";
 
 export interface AllWalletsViewProps {

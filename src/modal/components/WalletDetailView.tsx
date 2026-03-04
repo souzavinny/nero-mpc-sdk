@@ -55,7 +55,9 @@ export function WalletDetailView({
 
 	const buttonStyle: React.CSSProperties = {
 		padding: `${theme.spacing.xs} ${theme.spacing.md}`,
-		backgroundColor: btnHovered ? theme.colors.primaryHover : theme.colors.primary,
+		backgroundColor: btnHovered
+			? theme.colors.primaryHover
+			: theme.colors.primary,
 		color: "#fff",
 		border: "none",
 		borderRadius: theme.borderRadius.md,
@@ -73,9 +75,7 @@ export function WalletDetailView({
 				<img src={wallet.icon} alt={wallet.name} style={iconStyle} />
 			</div>
 			<div style={promptBoxStyle}>
-				<span style={promptTextStyle}>
-					Don&apos;t have {wallet.name}?
-				</span>
+				<span style={promptTextStyle}>Don&apos;t have {wallet.name}?</span>
 				<a
 					href={wallet.downloadUrl}
 					target="_blank"

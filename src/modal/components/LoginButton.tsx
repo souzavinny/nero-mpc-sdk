@@ -169,16 +169,13 @@ export function LoginButton({
 			justifyContent: "center",
 			width: "48px",
 			height: "48px",
-			backgroundColor: hovered
-				? theme.colors.surfaceHover
-				: "transparent",
+			backgroundColor: hovered ? theme.colors.surfaceHover : "transparent",
 			border: `1px solid ${hovered ? theme.colors.borderFocus : theme.colors.border}`,
 			borderRadius: theme.borderRadius.xl,
 			cursor: disabled || isLoading ? "not-allowed" : "pointer",
 			opacity: disabled || isLoading ? 0.6 : 1,
 			filter: hovered || isLoading ? "none" : "grayscale(1)",
-			transition:
-				"background-color 0.2s, border-color 0.2s, filter 0.3s ease",
+			transition: "background-color 0.2s, border-color 0.2s, filter 0.3s ease",
 			padding: 0,
 		};
 
@@ -224,10 +221,8 @@ export function LoginButton({
 			style={buttonStyle}
 			onMouseEnter={(e) => {
 				if (!disabled && !isLoading) {
-					e.currentTarget.style.borderColor =
-						theme.colors.borderFocus;
-					e.currentTarget.style.backgroundColor =
-						theme.colors.surfaceHover;
+					e.currentTarget.style.borderColor = theme.colors.borderFocus;
+					e.currentTarget.style.backgroundColor = theme.colors.surfaceHover;
 				}
 			}}
 			onMouseLeave={(e) => {

@@ -26,9 +26,7 @@ export function WalletRow({
 		gap: theme.spacing.sm,
 		width: "100%",
 		padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-		backgroundColor: hovered
-			? theme.colors.surfaceHover
-			: "transparent",
+		backgroundColor: hovered ? theme.colors.surfaceHover : "transparent",
 		border: `1px solid ${theme.colors.border}`,
 		borderRadius: theme.borderRadius.lg,
 		cursor: disabled ? "not-allowed" : "pointer",
@@ -57,9 +55,10 @@ export function WalletRow({
 		fontSize: theme.typography.fontSizeXs,
 		fontWeight: theme.typography.fontWeightMedium,
 		color: theme.colors.primary,
-		backgroundColor: theme.mode === "dark"
-			? "rgba(129, 140, 248, 0.15)"
-			: "rgba(99, 102, 241, 0.1)",
+		backgroundColor:
+			theme.mode === "dark"
+				? "rgba(129, 140, 248, 0.15)"
+				: "rgba(99, 102, 241, 0.1)",
 		padding: "2px 8px",
 		borderRadius: theme.borderRadius.full,
 		flexShrink: 0,

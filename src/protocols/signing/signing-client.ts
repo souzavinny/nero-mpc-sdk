@@ -1,9 +1,5 @@
 import type { APIClient } from "../../transport/api-client";
-import type {
-	KeyShare,
-	SigningRequest,
-	SigningResult,
-} from "../../types";
+import type { KeyShare, SigningRequest, SigningResult } from "../../types";
 import { SDKError } from "../../types";
 import {
 	type NonceShare,
@@ -103,10 +99,7 @@ export class SigningClient {
 					backendCommitment.E,
 					r,
 					messageHashBigInt,
-					[
-						this.keyShare.partyId,
-						backendNonceCommitment.partyId,
-					],
+					[this.keyShare.partyId, backendNonceCommitment.partyId],
 				);
 
 				if (!isValid) {
@@ -132,15 +125,12 @@ export class SigningClient {
 			);
 
 			// Step 3: Submit client partial — get final signature
-			const completeResult = await this.apiClient.signingComplete(
-				sessionId,
-				{
-					partyId: this.keyShare.partyId,
-					sigma: partial.sigma.toString(16).padStart(64, "0"),
-					publicShare: partial.publicShare,
-					nonceCommitment: partial.nonceCommitment,
-				},
-			);
+			const completeResult = await this.apiClient.signingComplete(sessionId, {
+				partyId: this.keyShare.partyId,
+				sigma: partial.sigma.toString(16).padStart(64, "0"),
+				publicShare: partial.publicShare,
+				nonceCommitment: partial.nonceCommitment,
+			});
 
 			return {
 				success: true,
@@ -152,8 +142,7 @@ export class SigningClient {
 				},
 			};
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : "Signing failed";
+			const message = error instanceof Error ? error.message : "Signing failed";
 			return {
 				success: false,
 				error: message,
