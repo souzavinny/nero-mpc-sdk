@@ -1,5 +1,6 @@
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { hkdf } from "@noble/hashes/hkdf";
+import { hmac } from "@noble/hashes/hmac";
 import { scryptAsync } from "@noble/hashes/scrypt";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils";
@@ -24,6 +25,14 @@ const BASE = secp256k1.ProjectivePoint.BASE;
 const DEFAULT_KDF_PARAMS = { N: 131072, r: 8, p: 1 };
 
 const MIN_PASSWORD_LENGTH = 12;
+
+const VALID_SHARING_TYPES = new Set(["multiplicative", "additive"]);
+
+const KDF_LIMITS = {
+	N: { min: 1024, max: 1 << 20 },
+	r: { min: 1, max: 64 },
+	p: { min: 1, max: 16 },
+};
 
 function toBuffer(data: Uint8Array): ArrayBuffer {
 	return data.buffer.slice(
@@ -95,6 +104,21 @@ function deriveClientShareKey(seed: Uint8Array): Uint8Array {
 	);
 }
 
+function computeMetadataHmac(
+	seed: Uint8Array,
+	blob: SelfCustodyCompositeBlob,
+): string {
+	const macKey = hkdf(
+		sha256,
+		seed,
+		undefined,
+		"nero-mpc:self-custody:metadata-mac",
+		32,
+	);
+	const payload = `${blob.version}:${blob.sharingType}:${blob.kdfSalt}:${blob.kdfParams.N}:${blob.kdfParams.r}:${blob.kdfParams.p}`;
+	return bytesToHex(hmac(sha256, macKey, utf8ToBytes(payload)));
+}
+
 export async function deriveRecoverySeed(
 	password: string,
 	salt: Uint8Array,
@@ -124,6 +148,48 @@ export function seedToPublicKey(seed: Uint8Array): string {
 	return BASE.multiply(seedToScalar(seed)).toHex(true);
 }
 
+function validateKdfParams(params: {
+	N: number;
+	r: number;
+	p: number;
+}): void {
+	const { N, r, p } = params;
+	if (
+		!Number.isInteger(N) ||
+		N < KDF_LIMITS.N.min ||
+		N > KDF_LIMITS.N.max ||
+		(N & (N - 1)) !== 0
+	) {
+		throw new SDKError(
+			`Invalid KDF param N=${N}: must be power of 2 in [${KDF_LIMITS.N.min}, ${KDF_LIMITS.N.max}]`,
+			"INVALID_COMPOSITE_BLOB",
+		);
+	}
+	if (!Number.isInteger(r) || r < KDF_LIMITS.r.min || r > KDF_LIMITS.r.max) {
+		throw new SDKError(
+			`Invalid KDF param r=${r}: must be in [${KDF_LIMITS.r.min}, ${KDF_LIMITS.r.max}]`,
+			"INVALID_COMPOSITE_BLOB",
+		);
+	}
+	if (!Number.isInteger(p) || p < KDF_LIMITS.p.min || p > KDF_LIMITS.p.max) {
+		throw new SDKError(
+			`Invalid KDF param p=${p}: must be in [${KDF_LIMITS.p.min}, ${KDF_LIMITS.p.max}]`,
+			"INVALID_COMPOSITE_BLOB",
+		);
+	}
+}
+
+function validateSharingType(
+	sharingType: string,
+): asserts sharingType is "multiplicative" | "additive" {
+	if (!VALID_SHARING_TYPES.has(sharingType)) {
+		throw new SDKError(
+			`Invalid sharingType: "${sharingType}"`,
+			"INVALID_COMPOSITE_BLOB",
+		);
+	}
+}
+
 export async function buildCompositeBlob(
 	clientShareHex: string,
 	backendShareBlob: SelfCustodyCompositeBlob["backendShareBlob"],
@@ -146,10 +212,51 @@ export async function buildCompositeBlob(
 		kdfSalt,
 		kdfParams,
 	};
-	return JSON.stringify(blob);
+
+	const metadataMac = computeMetadataHmac(seed, blob);
+
+	return JSON.stringify({ ...blob, metadataMac });
 }
 
-export function parseCompositeBlob(json: string): SelfCustodyCompositeBlob {
+const HEX_RE = /^[0-9a-f]+$/i;
+
+function isHex(s: string): boolean {
+	return s.length > 0 && s.length % 2 === 0 && HEX_RE.test(s);
+}
+
+function assertHexField(
+	obj: Record<string, unknown>,
+	label: string,
+	field: string,
+	exactBytes?: number,
+): void {
+	const val = obj[field];
+	if (typeof val !== "string" || !isHex(val)) {
+		throw new SDKError(
+			`Invalid composite blob: ${label}.${field} must be hex`,
+			"INVALID_COMPOSITE_BLOB",
+		);
+	}
+	if (exactBytes !== undefined && val.length !== exactBytes * 2) {
+		throw new SDKError(
+			`Invalid composite blob: ${label}.${field} must be ${exactBytes} bytes`,
+			"INVALID_COMPOSITE_BLOB",
+		);
+	}
+}
+
+function validateEncryptedFields(
+	obj: Record<string, unknown>,
+	label: string,
+): void {
+	assertHexField(obj, label, "ciphertext");
+	assertHexField(obj, label, "nonce", 12);
+	assertHexField(obj, label, "tag", 16);
+}
+
+export function parseCompositeBlob(
+	json: string,
+): SelfCustodyCompositeBlob & { metadataMac: string } {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(json);
@@ -170,7 +277,8 @@ export function parseCompositeBlob(json: string): SelfCustodyCompositeBlob {
 		!blob.backendShareBlob ||
 		typeof blob.sharingType !== "string" ||
 		typeof blob.kdfSalt !== "string" ||
-		!blob.kdfParams
+		!blob.kdfParams ||
+		typeof blob.metadataMac !== "string"
 	) {
 		throw new SDKError(
 			"Invalid composite blob: missing or wrong fields",
@@ -178,7 +286,33 @@ export function parseCompositeBlob(json: string): SelfCustodyCompositeBlob {
 		);
 	}
 
-	return parsed as SelfCustodyCompositeBlob;
+	validateEncryptedFields(
+		blob.encryptedClientShare as Record<string, unknown>,
+		"encryptedClientShare",
+	);
+	const bsb = blob.backendShareBlob as Record<string, unknown>;
+	validateEncryptedFields(bsb, "backendShareBlob");
+	assertHexField(bsb, "backendShareBlob", "ephemeralPublicKey", 33);
+
+	validateSharingType(blob.sharingType as string);
+
+	const kdfParams = blob.kdfParams as { N: number; r: number; p: number };
+	validateKdfParams(kdfParams);
+
+	return parsed as SelfCustodyCompositeBlob & { metadataMac: string };
+}
+
+function verifyMetadataIntegrity(
+	seed: Uint8Array,
+	blob: SelfCustodyCompositeBlob & { metadataMac: string },
+): void {
+	const expected = computeMetadataHmac(seed, blob);
+	if (blob.metadataMac !== expected) {
+		throw new SDKError(
+			"Composite blob metadata integrity check failed",
+			"INVALID_COMPOSITE_BLOB",
+		);
+	}
 }
 
 function validatePassword(password: string): void {
@@ -190,9 +324,16 @@ function validatePassword(password: string): void {
 	}
 }
 
-export function hashPasswordForFactor(password: string): string {
-	const hash = sha256(utf8ToBytes(password));
-	return bytesToHex(hash);
+function deriveFactorCredential(seed: Uint8Array): string {
+	return bytesToHex(
+		hkdf(
+			sha256,
+			seed,
+			undefined,
+			"nero-mpc:self-custody:factor-credential",
+			32,
+		),
+	);
 }
 
 export async function setupSelfCustodyRecovery({
@@ -205,7 +346,7 @@ export async function setupSelfCustodyRecovery({
 	clientShareHex: string;
 	apiClient: APIClient;
 	protocol: "dkls" | "pedersen-dkg-v1";
-}): Promise<string> {
+}): Promise<{ compositeJson: string; factorCredential: string }> {
 	validatePassword(password);
 
 	const salt = generateRandomBytes(32);
@@ -229,7 +370,9 @@ export async function setupSelfCustodyRecovery({
 			seed,
 		);
 
-		return compositeJson;
+		const factorCredential = deriveFactorCredential(seed);
+
+		return { compositeJson, factorCredential };
 	} finally {
 		seed.fill(0);
 	}
@@ -243,6 +386,7 @@ export async function extractClientShare(
 	const salt = hexToBytes(blob.kdfSalt);
 	const seed = await deriveRecoverySeed(password, salt, blob.kdfParams);
 	try {
+		verifyMetadataIntegrity(seed, blob);
 		const shareKey = deriveClientShareKey(seed);
 		const plaintext = await aesGcmDecryptRaw(
 			blob.encryptedClientShare.ciphertext,
@@ -271,6 +415,8 @@ export async function offlineReconstructKey({
 	const seed = await deriveRecoverySeed(password, salt, blob.kdfParams);
 
 	try {
+		verifyMetadataIntegrity(seed, blob);
+
 		const shareKey = deriveClientShareKey(seed);
 		const clientSharePlain = await aesGcmDecryptRaw(
 			blob.encryptedClientShare.ciphertext,
@@ -297,8 +443,7 @@ export async function offlineReconstructKey({
 		if (blob.sharingType === "multiplicative") {
 			sk = mod(skA * skB, CURVE_ORDER);
 		} else {
-			// Additive: full key = sk_A + sk_B, where sk_B = fullKey - sk_A
-			// and the backend stored sk_B = fullKey - sk_A, so sk = 2*sk_A - sk_B
+			// Additive: backend stored sk_B = fullKey - sk_A, so sk = 2*sk_A - sk_B
 			sk = mod(2n * skA - skB, CURVE_ORDER);
 		}
 

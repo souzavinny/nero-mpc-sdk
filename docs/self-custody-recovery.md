@@ -44,7 +44,8 @@ SDK builds composite blob:
     backendShareBlob: { ... },      <-- ECDH-encrypted sk_B
     sharingType: "multiplicative",
     kdfSalt: "...",
-    kdfParams: { N, r, p }
+    kdfParams: { N, r, p },
+    metadataMac: "..."             <-- HMAC over metadata fields
   }
     |
     v
@@ -56,7 +57,7 @@ Stored via factor API (password-protected)
 | Party | Knows |
 |-------|-------|
 | User | Password (discarded after setup) |
-| NERO backend | `sk_B`, encrypted blob (cannot decrypt without password), SHA-256 hash of password (for factor API envelope) |
+| NERO backend | `sk_B`, encrypted blob (cannot decrypt without password), HKDF-derived credential from scrypt seed (for factor API envelope) |
 | Composite blob | Encrypted `sk_A` + encrypted `sk_B` (both useless without password) |
 
 The full key never exists in memory during setup.
@@ -165,7 +166,9 @@ function RecoveryPanel() {
 | Client share HKDF info | `nero-mpc:self-custody:client-share` |
 | Backend share encryption | ECDH + HKDF(SHA-256) + AES-256-GCM |
 | Backend share HKDF info | `nero-mpc:ecdh:share-exchange` |
-| Factor API password | SHA-256 hash of raw password (raw password never sent to backend) |
+| Factor API credential | HKDF(seed, "nero-mpc:self-custody:factor-credential") - memory-hard by scrypt inheritance, not replayable |
+| Metadata integrity | HMAC-SHA-256 over version, sharingType, kdfSalt, kdfParams (keyed by HKDF-derived mac key from seed). Required field - stripping it rejects the blob at parse time. |
+| KDF param limits | N: [1024, 2^20] power of 2; r: [1, 64]; p: [1, 16] |
 | Minimum password length | 12 characters |
 | AES-GCM nonce | 12 bytes (random) |
 | AES-GCM tag | 128 bits |

@@ -23,6 +23,19 @@ import { deriveEthereumAddress } from "../protocols/dkls/crypto";
 const BASE = secp256k1.ProjectivePoint.BASE;
 const FAST_KDF = { N: 1024, r: 8, p: 1 };
 
+const NONCE_12 = "00".repeat(12);
+const TAG_16 = "00".repeat(16);
+const PUBKEY_33 = `02${"00".repeat(32)}`;
+const CT_HEX = "aabb";
+
+function dummyEncFields() {
+	return { ciphertext: CT_HEX, nonce: NONCE_12, tag: TAG_16 };
+}
+
+function dummyBackendBlob() {
+	return { ephemeralPublicKey: PUBKEY_33, ...dummyEncFields() };
+}
+
 async function buildTestComposite(
 	skA: bigint,
 	skB: bigint,
@@ -229,5 +242,164 @@ describe("self-custody-recovery", () => {
 				protocol: "dkls",
 			}),
 		).rejects.toThrow("Password must be at least 12 characters");
+	});
+
+	it("rejects non-hex or wrong-length encrypted fields in blob", () => {
+		const validBase = {
+			version: 2,
+			sharingType: "multiplicative",
+			kdfSalt: "00".repeat(32),
+			kdfParams: FAST_KDF,
+			metadataMac: "aabb",
+		};
+
+		const withBadClientTag = {
+			...validBase,
+			encryptedClientShare: { ciphertext: CT_HEX, nonce: NONCE_12, tag: "zz" },
+			backendShareBlob: dummyBackendBlob(),
+		};
+		expect(() => parseCompositeBlob(JSON.stringify(withBadClientTag))).toThrow(
+			"encryptedClientShare.tag must be",
+		);
+
+		const withBadBackendNonce = {
+			...validBase,
+			encryptedClientShare: dummyEncFields(),
+			backendShareBlob: {
+				...dummyBackendBlob(),
+				nonce: "not-hex!",
+			},
+		};
+		expect(() =>
+			parseCompositeBlob(JSON.stringify(withBadBackendNonce)),
+		).toThrow("backendShareBlob.nonce must be hex");
+
+		const withOddLenCiphertext = {
+			...validBase,
+			encryptedClientShare: { ...dummyEncFields(), ciphertext: "aab" },
+			backendShareBlob: dummyBackendBlob(),
+		};
+		expect(() =>
+			parseCompositeBlob(JSON.stringify(withOddLenCiphertext)),
+		).toThrow("encryptedClientShare.ciphertext must be hex");
+
+		const withShortNonce = {
+			...validBase,
+			encryptedClientShare: { ...dummyEncFields(), nonce: "aabb" },
+			backendShareBlob: dummyBackendBlob(),
+		};
+		expect(() => parseCompositeBlob(JSON.stringify(withShortNonce))).toThrow(
+			"encryptedClientShare.nonce must be 12 bytes",
+		);
+
+		const withShortPubkey = {
+			...validBase,
+			encryptedClientShare: dummyEncFields(),
+			backendShareBlob: { ...dummyBackendBlob(), ephemeralPublicKey: "aabb" },
+		};
+		expect(() => parseCompositeBlob(JSON.stringify(withShortPubkey))).toThrow(
+			"backendShareBlob.ephemeralPublicKey must be 33 bytes",
+		);
+	});
+
+	it("rejects invalid sharingType in blob", () => {
+		const blob = {
+			version: 2,
+			encryptedClientShare: dummyEncFields(),
+			backendShareBlob: dummyBackendBlob(),
+			sharingType: "unknown_type",
+			kdfSalt: "00".repeat(32),
+			kdfParams: FAST_KDF,
+			metadataMac: "aabb",
+		};
+		expect(() => parseCompositeBlob(JSON.stringify(blob))).toThrow(
+			'Invalid sharingType: "unknown_type"',
+		);
+	});
+
+	it("rejects extreme KDF params (DoS prevention)", () => {
+		const makeBlob = (params: { N: number; r: number; p: number }) =>
+			JSON.stringify({
+				version: 2,
+				encryptedClientShare: dummyEncFields(),
+				backendShareBlob: dummyBackendBlob(),
+				sharingType: "multiplicative",
+				kdfSalt: "00".repeat(32),
+				kdfParams: params,
+				metadataMac: "aabb",
+			});
+
+		expect(() =>
+			parseCompositeBlob(makeBlob({ N: 1 << 30, r: 8, p: 1 })),
+		).toThrow("Invalid KDF param N");
+		expect(() =>
+			parseCompositeBlob(makeBlob({ N: 1024, r: 256, p: 1 })),
+		).toThrow("Invalid KDF param r");
+		expect(() =>
+			parseCompositeBlob(makeBlob({ N: 1024, r: 8, p: 100 })),
+		).toThrow("Invalid KDF param p");
+		expect(() => parseCompositeBlob(makeBlob({ N: 1000, r: 8, p: 1 }))).toThrow(
+			"Invalid KDF param N",
+		);
+	});
+
+	it("detects tampered metadata via HMAC integrity check", async () => {
+		const skA = hexToScalar(
+			"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+		);
+		const skB = hexToScalar(
+			"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		);
+		const password = "test-password-long-enough";
+
+		const compositeJson = await buildTestComposite(
+			skA,
+			skB,
+			password,
+			"multiplicative",
+		);
+
+		const tampered = JSON.parse(compositeJson);
+		tampered.sharingType = "additive";
+		const tamperedJson = JSON.stringify(tampered);
+
+		await expect(
+			offlineReconstructKey({
+				compositeJson: tamperedJson,
+				password,
+			}),
+		).rejects.toThrow("metadata integrity check failed");
+	});
+
+	it("rejects blob with metadataMac stripped", async () => {
+		const skA = hexToScalar(
+			"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+		);
+		const skB = hexToScalar(
+			"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		);
+		const password = "test-password-long-enough";
+
+		const compositeJson = await buildTestComposite(
+			skA,
+			skB,
+			password,
+			"multiplicative",
+		);
+
+		const stripped = JSON.parse(compositeJson);
+		stripped.metadataMac = undefined;
+		const strippedJson = JSON.stringify(stripped);
+
+		expect(() => parseCompositeBlob(strippedJson)).toThrow(
+			"Invalid composite blob",
+		);
+
+		await expect(
+			offlineReconstructKey({
+				compositeJson: strippedJson,
+				password,
+			}),
+		).rejects.toThrow("Invalid composite blob");
 	});
 });

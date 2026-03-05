@@ -16,7 +16,6 @@ import { IndexedDBStorage, MemoryStorage } from "./core/secure-storage";
 import {
 	offlineReconstructKey as coreOfflineReconstruct,
 	setupSelfCustodyRecovery as coreSetupSelfCustody,
-	hashPasswordForFactor,
 } from "./core/self-custody-recovery";
 import { DKGClient } from "./protocols/dkg/dkg-client";
 import {
@@ -1144,7 +1143,7 @@ export class NeroMpcSDK {
 		const clientShareHex = scalarToHex(clientShare);
 		const protocol = this._protocol === "dkls" ? "dkls" : "pedersen-dkg-v1";
 
-		const compositeJson = await coreSetupSelfCustody({
+		const { compositeJson, factorCredential } = await coreSetupSelfCustody({
 			password,
 			clientShareHex,
 			apiClient: this.apiClient,
@@ -1152,7 +1151,7 @@ export class NeroMpcSDK {
 		});
 
 		const result = await this.apiClient.factorAdd("password", compositeJson, {
-			password: hashPasswordForFactor(password),
+			password: factorCredential,
 		});
 
 		return { factorId: result.factor.id };

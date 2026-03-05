@@ -38,7 +38,6 @@ export {
 	setupSelfCustodyRecovery,
 	extractClientShare,
 	offlineReconstructKey,
-	hashPasswordForFactor,
 } from "./self-custody-recovery";
 
 export {
