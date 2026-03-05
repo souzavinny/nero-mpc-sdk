@@ -1,6 +1,6 @@
 {
   "name": "@nerochain/mpc-sdk",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "NERO MPC SDK - Browser-based threshold signature client for self-custodial wallets",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
