@@ -30,6 +30,17 @@ export {
 } from "./crypto-primitives";
 
 export {
+	deriveRecoverySeed,
+	seedToScalar,
+	seedToPublicKey,
+	buildCompositeBlob,
+	parseCompositeBlob,
+	setupSelfCustodyRecovery,
+	extractClientShare,
+	offlineReconstructKey,
+} from "./self-custody-recovery";
+
+export {
 	NeroProvider,
 	createNeroProvider,
 	type NeroProviderConfig,

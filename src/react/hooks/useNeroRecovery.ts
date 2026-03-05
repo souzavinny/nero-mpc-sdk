@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { offlineReconstructKey } from "../../core/self-custody-recovery";
 import type {
 	RecoveryAttempt,
 	RecoveryMethod,
@@ -42,6 +43,12 @@ export interface UseNeroRecoveryReturn {
 		recoveredData: unknown;
 	}>;
 	cancel: (attemptId: string) => Promise<{ cancelled: true }>;
+	setupSelfCustody: (password: string) => Promise<{ factorId: string }>;
+	offlineRecover: (
+		compositeJson: string,
+		password: string,
+		expectedAddress?: string,
+	) => Promise<{ privateKey: string; walletAddress: string }>;
 	methods: RecoveryMethod[];
 	isLoading: boolean;
 	error: Error | null;
@@ -179,6 +186,49 @@ export function useNeroRecovery(): UseNeroRecoveryReturn {
 		[sdk],
 	);
 
+	const setupSelfCustody = useCallback(
+		async (password: string) => {
+			if (!sdk) throw new Error("SDK not initialized");
+			setIsLoading(true);
+			setError(null);
+			try {
+				return await sdk.setupSelfCustodyRecovery(password);
+			} catch (err) {
+				const e = err instanceof Error ? err : new Error(String(err));
+				setError(e);
+				throw e;
+			} finally {
+				setIsLoading(false);
+			}
+		},
+		[sdk],
+	);
+
+	const offlineRecover = useCallback(
+		async (
+			compositeJson: string,
+			password: string,
+			expectedAddress?: string,
+		) => {
+			setIsLoading(true);
+			setError(null);
+			try {
+				return await offlineReconstructKey({
+					compositeJson,
+					password,
+					expectedAddress,
+				});
+			} catch (err) {
+				const e = err instanceof Error ? err : new Error(String(err));
+				setError(e);
+				throw e;
+			} finally {
+				setIsLoading(false);
+			}
+		},
+		[],
+	);
+
 	return {
 		setup,
 		listMethods,
@@ -187,6 +237,8 @@ export function useNeroRecovery(): UseNeroRecoveryReturn {
 		verify,
 		complete,
 		cancel,
+		setupSelfCustody,
+		offlineRecover,
 		methods,
 		isLoading,
 		error,

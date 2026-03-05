@@ -13,6 +13,10 @@ import type {
 	TypedDataTypes,
 } from "./core/provider-types";
 import { IndexedDBStorage, MemoryStorage } from "./core/secure-storage";
+import {
+	offlineReconstructKey as coreOfflineReconstruct,
+	setupSelfCustodyRecovery as coreSetupSelfCustody,
+} from "./core/self-custody-recovery";
 import { DKGClient } from "./protocols/dkg/dkg-client";
 import {
 	CURVE_ORDER,
@@ -1123,6 +1127,46 @@ export class NeroMpcSDK {
 		verificationCode: string,
 	): Promise<{ recoveredShare: unknown }> {
 		return this.apiClient.factorRecoverShare(factorId, verificationCode);
+	}
+
+	async setupSelfCustodyRecovery(
+		password: string,
+	): Promise<{ factorId: string }> {
+		if (!this._user) {
+			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
+		}
+		if (!this.hasWallet) {
+			throw new SDKError("No wallet available", "NO_WALLET");
+		}
+
+		const clientShare = await this.getClientShare();
+		const clientShareHex = scalarToHex(clientShare);
+		const protocol = this._protocol === "dkls" ? "dkls" : "pedersen-dkg-v1";
+
+		const { compositeJson, factorCredential } = await coreSetupSelfCustody({
+			password,
+			clientShareHex,
+			apiClient: this.apiClient,
+			protocol,
+		});
+
+		const result = await this.apiClient.factorAdd("password", compositeJson, {
+			password: factorCredential,
+		});
+
+		return { factorId: result.factor.id };
+	}
+
+	static async offlineRecoverKey(
+		compositeJson: string,
+		password: string,
+		expectedAddress?: string,
+	): Promise<{ privateKey: string; walletAddress: string }> {
+		return coreOfflineReconstruct({
+			compositeJson,
+			password,
+			expectedAddress,
+		});
 	}
 
 	private async initializeWallet(): Promise<void> {

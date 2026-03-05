@@ -505,6 +505,24 @@ export interface AggregateVerifierRule {
 	updatedAt: string;
 }
 
+export interface SelfCustodyCompositeBlob {
+	version: 2;
+	encryptedClientShare: {
+		ciphertext: string;
+		nonce: string;
+		tag: string;
+	};
+	backendShareBlob: {
+		ephemeralPublicKey: string;
+		ciphertext: string;
+		nonce: string;
+		tag: string;
+	};
+	sharingType: "multiplicative" | "additive";
+	kdfSalt: string;
+	kdfParams: { N: number; r: number; p: number };
+}
+
 export type SDKErrorCode =
 	| "SIGNING_SESSION_CONFLICT"
 	| "NOT_AUTHENTICATED"
@@ -523,6 +541,9 @@ export type SDKErrorCode =
 	| "NO_DKG_SESSION_ID"
 	| "MISSING_DKG_SESSION_ID"
 	| "MFA_SETUP_FAILED"
+	| "SELF_CUSTODY_SETUP_FAILED"
+	| "SELF_CUSTODY_RECOVERY_FAILED"
+	| "INVALID_COMPOSITE_BLOB"
 	| (string & {});
 
 export type SDKEvent =
