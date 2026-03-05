@@ -1,6 +1,6 @@
 # @nerochain/mpc-sdk
 
-Browser-based threshold signature client for self-custodial wallets. Uses MPC-TSS (Multi-Party Computation Threshold Signature Schemes) to generate and manage Ethereum wallets from social logins.
+Browser-based threshold signature client for self-custodial wallets. Uses 2-party DKLS threshold ECDSA with secp256k1 to generate and manage Ethereum wallets from social logins — the full private key is never reconstructed during normal operations.
 
 ## Installation
 
@@ -37,6 +37,36 @@ if (requiresDKG) {
 const signature = await sdk.signMessage("Hello NERO");
 ```
 
+## Self-Custody Recovery
+
+Users can set up offline recovery to reconstruct their full private key without NERO infrastructure. Both MPC shares (`sk_A` client + `sk_B` backend) are stored in a single composite blob, encrypted under a user-chosen password via scrypt KDF + AES-256-GCM + ECDH. The full key is never assembled during setup.
+
+### Setup
+
+```typescript
+const sdk = new NeroMpcSDK(config);
+await sdk.initialize();
+// ... login and generate wallet ...
+
+const { factorId } = await sdk.setupSelfCustodyRecovery("user-password-here");
+```
+
+### Offline Recovery (No Network Required)
+
+```typescript
+import { NeroMpcSDK } from "@nerochain/mpc-sdk";
+
+const { privateKey, walletAddress } = await NeroMpcSDK.offlineRecoverKey(
+  compositeJson,        // the stored composite blob
+  "user-password-here", // same password used during setup
+  "0x1234...",          // optional: verify address matches
+);
+
+// Import privateKey into MetaMask, Rabby, or any Ethereum wallet
+```
+
+See [docs/self-custody-recovery.md](docs/self-custody-recovery.md) for the full protocol specification and security analysis.
+
 ## React Integration
 
 ```tsx
@@ -64,6 +94,27 @@ function Wallet() {
 }
 ```
 
+### Recovery Hook
+
+```typescript
+import { useNeroRecovery } from "@nerochain/mpc-sdk/react";
+
+function RecoveryPanel() {
+  const { setupSelfCustody, offlineRecover, isLoading, error } = useNeroRecovery();
+
+  const handleSetup = async () => {
+    const { factorId } = await setupSelfCustody("my-password");
+  };
+
+  const handleRecover = async () => {
+    const { privateKey, walletAddress } = await offlineRecover(
+      compositeJson,
+      "my-password",
+    );
+  };
+}
+```
+
 ## Package Exports
 
 | Export | Import Path | Description |
@@ -77,14 +128,15 @@ function Wallet() {
 
 ## Features
 
-- **Social Login** - Google, GitHub, Apple, and more via OAuth
-- **DKLS Protocol (Default)** - 2-party threshold ECDSA (key never reconstructed on server)
-- **Pedersen DKG** - Legacy protocol, available via `protocol: "pedersen"`
-- **ERC-4337** - Smart account support with bundler and paymaster
-- **Multi-Chain** - NERO Chain, Ethereum, Polygon, Arbitrum, Base
-- **React Hooks** - `useNeroConnect`, `useNeroUser`, `useNeroWallet`, and more
-- **External Wallets** - WalletConnect, MetaMask SDK, Coinbase Wallet
-- **Theming** - Full whitelabel support with light/dark modes
+- **Social Login** — Google, GitHub, Apple, and more via OAuth
+- **DKLS Protocol (Default)** — 2-party threshold ECDSA with multiplicative sharing; the private key is never reconstructed on the server during signing
+- **Self-Custody Recovery** — Offline key reconstruction from a password-protected composite blob containing both MPC shares
+- **Pedersen DKG** — Legacy protocol, available via `protocol: "pedersen"`
+- **ERC-4337** — Smart account support with bundler and paymaster
+- **Multi-Chain** — NERO Chain, Ethereum, Polygon, Arbitrum, Base
+- **React Hooks** — `useNeroConnect`, `useNeroUser`, `useNeroWallet`, `useNeroRecovery`, and more
+- **External Wallets** — WalletConnect, MetaMask SDK, Coinbase Wallet
+- **Theming** — Full whitelabel support with light/dark modes
 
 ## Peer Dependencies
 
