@@ -15,7 +15,9 @@ export class LocalStorageAdapter implements StorageAdapter {
 	}
 
 	async clear(): Promise<void> {
-		localStorage.clear();
+		console.warn(
+			"[NeroMpcSDK] LocalStorageAdapter.clear() is a no-op. Use delete() for specific keys.",
+		);
 	}
 }
 
@@ -33,7 +35,9 @@ export class SessionStorageAdapter implements StorageAdapter {
 	}
 
 	async clear(): Promise<void> {
-		sessionStorage.clear();
+		console.warn(
+			"[NeroMpcSDK] SessionStorageAdapter.clear() is a no-op. Use delete() for specific keys.",
+		);
 	}
 }
 

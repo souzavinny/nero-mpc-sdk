@@ -5,7 +5,7 @@ type TransitionMap = Record<ConnectionStatus, ConnectionStatus[]>;
 const VALID_TRANSITIONS: TransitionMap = {
 	disconnected: ["connecting"],
 	connecting: ["connected", "errored"],
-	connected: ["disconnected"],
+	connected: ["disconnected", "errored"],
 	errored: ["connecting", "disconnected"],
 };
 

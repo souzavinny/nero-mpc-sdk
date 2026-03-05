@@ -712,7 +712,6 @@ export class NeroMpcSDK {
 		}
 
 		this.emit("logout", undefined);
-		this._eventListeners.clear();
 	}
 
 	async connect(): Promise<EIP1193Provider> {

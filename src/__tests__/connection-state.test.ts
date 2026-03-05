@@ -56,17 +56,12 @@ describe("ConnectionStateMachine", () => {
 		warnSpy.mockRestore();
 	});
 
-	it("should warn when transitioning from connected to errored", () => {
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+	it("should allow valid transition: connected → errored", () => {
 		const sm = new ConnectionStateMachine();
 		sm.transition("connecting");
 		sm.transition("connected");
-
-		sm.transition("errored"); // invalid
-
-		expect(sm.state).toBe("connected");
-		expect(warnSpy).toHaveBeenCalled();
-		warnSpy.mockRestore();
+		sm.transition("errored");
+		expect(sm.state).toBe("errored");
 	});
 
 	it("should reset to disconnected", () => {
