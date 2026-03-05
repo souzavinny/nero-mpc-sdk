@@ -37,7 +37,7 @@ export class SigningClient {
 	async sign(request: SigningRequest): Promise<SigningResult> {
 		try {
 			// Step 1: Initiate — get backend nonce commitment
-			const initResult = await this.apiClient.signingInit(
+			const initResult = await this.apiClient.wallet.signingInit(
 				request.messageHash,
 				request.messageType,
 			);
@@ -71,7 +71,7 @@ export class SigningClient {
 			const { r } = computeR(R);
 
 			// Step 2: Submit client nonce — get backend partial signature
-			const nonceResult = await this.apiClient.signingNonce(
+			const nonceResult = await this.apiClient.wallet.signingNonce(
 				sessionId,
 				clientCommitment,
 			);
@@ -125,12 +125,15 @@ export class SigningClient {
 			);
 
 			// Step 3: Submit client partial — get final signature
-			const completeResult = await this.apiClient.signingComplete(sessionId, {
-				partyId: this.keyShare.partyId,
-				sigma: partial.sigma.toString(16).padStart(64, "0"),
-				publicShare: partial.publicShare,
-				nonceCommitment: partial.nonceCommitment,
-			});
+			const completeResult = await this.apiClient.wallet.signingComplete(
+				sessionId,
+				{
+					partyId: this.keyShare.partyId,
+					sigma: partial.sigma.toString(16).padStart(64, "0"),
+					publicShare: partial.publicShare,
+					nonceCommitment: partial.nonceCommitment,
+				},
+			);
 
 			return {
 				success: true,

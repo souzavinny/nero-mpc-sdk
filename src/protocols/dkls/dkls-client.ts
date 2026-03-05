@@ -99,7 +99,7 @@ export class DKLSClient {
 			const { state, commitment } = keygenInitClient();
 			this.keygenState = state;
 
-			const initResult = await this.apiClient.dklsKeygenInit();
+			const initResult = await this.apiClient.dkls.keygenInit();
 
 			this.keygenState = keygenProcessBackendCommitment(
 				this.keygenState,
@@ -108,7 +108,7 @@ export class DKLSClient {
 
 			const clientReveal = keygenGenerateReveal(this.keygenState);
 
-			const commitmentResult = await this.apiClient.dklsKeygenCommitment(
+			const commitmentResult = await this.apiClient.dkls.keygenCommitment(
 				initResult.sessionId,
 				commitment,
 			);
@@ -118,7 +118,7 @@ export class DKLSClient {
 				commitmentResult.backendPublicShare,
 			);
 
-			const completeResult = await this.apiClient.dklsKeygenComplete(
+			const completeResult = await this.apiClient.dkls.keygenComplete(
 				initResult.sessionId,
 				clientReveal,
 			);
@@ -170,7 +170,7 @@ export class DKLSClient {
 					| undefined;
 				if (activeSessionId) {
 					try {
-						await this.apiClient.dklsSigningCancel(activeSessionId);
+						await this.apiClient.dkls.signingCancel(activeSessionId);
 					} catch {}
 				}
 				return await this.executeSigningFlow(keyShare, request);
@@ -189,7 +189,7 @@ export class DKLSClient {
 		keyShare: DKLSKeyShare,
 		request: DKLSSignRequest,
 	): Promise<DKLSSigningResult> {
-		const initResult = await this.apiClient.dklsSigningInit({
+		const initResult = await this.apiClient.dkls.signingInit({
 			messageHash: request.messageHash,
 			messageType: request.messageType || "message",
 			dkgSessionId: request.dkgSessionId,
@@ -206,7 +206,7 @@ export class DKLSClient {
 			initResult.backendNonceCommitment,
 		);
 
-		const nonceResult = await this.apiClient.dklsSigningNonce(
+		const nonceResult = await this.apiClient.dkls.signingNonce(
 			initResult.sessionId,
 			nonceCommitment,
 		);
@@ -221,7 +221,7 @@ export class DKLSClient {
 		);
 		this.mtaState = mtaState;
 
-		const mtaRound1Result = await this.apiClient.dklsMtaRound1(
+		const mtaRound1Result = await this.apiClient.dkls.mtaRound1(
 			initResult.sessionId,
 			mta1Setup,
 			mta2Setup,
@@ -238,7 +238,7 @@ export class DKLSClient {
 		);
 		this.mtaState = updatedMtaState;
 
-		await this.apiClient.dklsMtaRound2(
+		await this.apiClient.dkls.mtaRound2(
 			initResult.sessionId,
 			mta1Encrypted,
 			mta2Encrypted,
@@ -249,7 +249,7 @@ export class DKLSClient {
 			this.mtaState,
 		);
 
-		const result = await this.apiClient.dklsSigningPartial(
+		const result = await this.apiClient.dkls.signingPartial(
 			initResult.sessionId,
 			clientPartialSignature,
 		);

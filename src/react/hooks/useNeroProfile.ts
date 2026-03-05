@@ -82,7 +82,7 @@ export function useNeroProfile(): UseNeroProfileReturn {
 
 	const getProfile = useCallback(async () => {
 		return wrap(async () => {
-			const result = await sdk!.apiClientForHooks.userGetProfile();
+			const result = await sdk!.apiClientForHooks.user.getProfile();
 			setProfile(result.profile);
 			return result;
 		});
@@ -90,37 +90,37 @@ export function useNeroProfile(): UseNeroProfileReturn {
 
 	const updateProfile = useCallback(
 		(data: { displayName?: string; profilePicture?: string }) =>
-			wrap(() => sdk!.apiClientForHooks.userUpdateProfile(data)),
+			wrap(() => sdk!.apiClientForHooks.user.updateProfile(data)),
 		[sdk, wrap],
 	);
 
 	const deleteAccount = useCallback(
 		(confirmation: string, password?: string) =>
 			wrap(() =>
-				sdk!.apiClientForHooks.userDeleteAccount(confirmation, password),
+				sdk!.apiClientForHooks.user.deleteAccount(confirmation, password),
 			),
 		[sdk, wrap],
 	);
 
 	const getDevices = useCallback(
-		() => wrap(() => sdk!.apiClientForHooks.userGetDevices()),
+		() => wrap(() => sdk!.apiClientForHooks.user.getDevices()),
 		[sdk, wrap],
 	);
 
 	const trustDevice = useCallback(
 		(deviceId: string, deviceName?: string) =>
-			wrap(() => sdk!.apiClientForHooks.userTrustDevice(deviceId, deviceName)),
+			wrap(() => sdk!.apiClientForHooks.user.trustDevice(deviceId, deviceName)),
 		[sdk, wrap],
 	);
 
 	const removeDevice = useCallback(
 		(deviceId: string) =>
-			wrap(() => sdk!.apiClientForHooks.userRemoveDevice(deviceId)),
+			wrap(() => sdk!.apiClientForHooks.user.removeDevice(deviceId)),
 		[sdk, wrap],
 	);
 
 	const getSecurity = useCallback(
-		() => wrap(() => sdk!.apiClientForHooks.userGetSecurity()),
+		() => wrap(() => sdk!.apiClientForHooks.user.getSecurity()),
 		[sdk, wrap],
 	);
 
@@ -131,24 +131,24 @@ export function useNeroProfile(): UseNeroProfileReturn {
 			action?: string;
 			from?: string;
 			to?: string;
-		}) => wrap(() => sdk!.apiClientForHooks.userGetActivity(params)),
+		}) => wrap(() => sdk!.apiClientForHooks.user.getActivity(params)),
 		[sdk, wrap],
 	);
 
 	const getNotifications = useCallback(
-		() => wrap(() => sdk!.apiClientForHooks.userGetNotifications()),
+		() => wrap(() => sdk!.apiClientForHooks.user.getNotifications()),
 		[sdk, wrap],
 	);
 
 	const updateNotifications = useCallback(
 		(prefs: Partial<NotificationPreferences>) =>
-			wrap(() => sdk!.apiClientForHooks.userUpdateNotifications(prefs)),
+			wrap(() => sdk!.apiClientForHooks.user.updateNotifications(prefs)),
 		[sdk, wrap],
 	);
 
 	const exportData = useCallback(
 		(format?: "json" | "csv", includeWallet?: boolean) =>
-			wrap(() => sdk!.apiClientForHooks.userExportData(format, includeWallet)),
+			wrap(() => sdk!.apiClientForHooks.user.exportData(format, includeWallet)),
 		[sdk, wrap],
 	);
 

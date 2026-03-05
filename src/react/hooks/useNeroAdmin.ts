@@ -101,29 +101,30 @@ export function useNeroAdmin(): UseNeroAdminReturn {
 			scopes?: string[];
 			rateLimitPerMinute?: number;
 			expiresAt?: string;
-		}) => wrap(() => api!.adminCreateApiKey(options)),
+		}) => wrap(() => api!.admin.createApiKey(options)),
 		[api, wrap],
 	);
 
 	const listApiKeys = useCallback(
-		() => wrap(() => api!.adminListApiKeys()),
+		() => wrap(() => api!.admin.listApiKeys()),
 		[api, wrap],
 	);
 
 	const revokeApiKey = useCallback(
-		(id: string) => wrap(() => api!.adminRevokeApiKey(id)),
+		(id: string) => wrap(() => api!.admin.revokeApiKey(id)),
 		[api, wrap],
 	);
 
 	const rotateApiKey = useCallback(
-		(id: string, name?: string) => wrap(() => api!.adminRotateApiKey(id, name)),
+		(id: string, name?: string) =>
+			wrap(() => api!.admin.rotateApiKey(id, name)),
 		[api, wrap],
 	);
 
 	const getSettings = useCallback(
 		() =>
 			wrap(async () => {
-				const result = await api!.adminGetSettings();
+				const result = await api!.admin.getSettings();
 				setSettings(result);
 				return result;
 			}),
@@ -133,7 +134,7 @@ export function useNeroAdmin(): UseNeroAdminReturn {
 	const updateSettings = useCallback(
 		(s: { sessionLifetimeSeconds?: number; enableDappShare?: boolean }) =>
 			wrap(async () => {
-				const result = await api!.adminUpdateSettings(s);
+				const result = await api!.admin.updateSettings(s);
 				setSettings(result);
 				return result;
 			}),
@@ -149,12 +150,12 @@ export function useNeroAdmin(): UseNeroAdminReturn {
 			audience?: string;
 			clientId?: string;
 			configJson?: Record<string, unknown>;
-		}) => wrap(() => api!.createVerifier(config)),
+		}) => wrap(() => api!.admin.createVerifier(config)),
 		[api, wrap],
 	);
 
 	const listVerifiers = useCallback(
-		() => wrap(() => api!.listVerifiers()),
+		() => wrap(() => api!.admin.listVerifiers()),
 		[api, wrap],
 	);
 
@@ -170,12 +171,12 @@ export function useNeroAdmin(): UseNeroAdminReturn {
 				configJson?: Record<string, unknown>;
 				isActive?: boolean;
 			},
-		) => wrap(() => api!.updateVerifier(id, updates)),
+		) => wrap(() => api!.admin.updateVerifier(id, updates)),
 		[api, wrap],
 	);
 
 	const deleteVerifier = useCallback(
-		(id: string) => wrap(() => api!.deleteVerifier(id)),
+		(id: string) => wrap(() => api!.admin.deleteVerifier(id)),
 		[api, wrap],
 	);
 
@@ -184,12 +185,12 @@ export function useNeroAdmin(): UseNeroAdminReturn {
 			name: string;
 			matchField?: string;
 			subVerifiers: string[];
-		}) => wrap(() => api!.createAggregateRule(config)),
+		}) => wrap(() => api!.admin.createAggregateRule(config)),
 		[api, wrap],
 	);
 
 	const listAggregateRules = useCallback(
-		() => wrap(() => api!.listAggregateRules()),
+		() => wrap(() => api!.admin.listAggregateRules()),
 		[api, wrap],
 	);
 
@@ -201,12 +202,12 @@ export function useNeroAdmin(): UseNeroAdminReturn {
 				subVerifiers?: string[];
 				isActive?: boolean;
 			},
-		) => wrap(() => api!.updateAggregateRule(id, updates)),
+		) => wrap(() => api!.admin.updateAggregateRule(id, updates)),
 		[api, wrap],
 	);
 
 	const deleteAggregateRule = useCallback(
-		(id: string) => wrap(() => api!.deleteAggregateRule(id)),
+		(id: string) => wrap(() => api!.admin.deleteAggregateRule(id)),
 		[api, wrap],
 	);
 

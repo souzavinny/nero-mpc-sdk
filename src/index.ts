@@ -10,6 +10,14 @@ export {
 
 export * from "./types";
 
+export {
+	AuthError,
+	NetworkError,
+	WalletError,
+	SigningError,
+	ProtocolError,
+} from "./errors";
+
 export * from "./core";
 
 export * from "./transport";

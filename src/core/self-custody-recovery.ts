@@ -354,7 +354,10 @@ export async function setupSelfCustodyRecovery({
 
 	try {
 		const recoveryPk = seedToPublicKey(seed);
-		const response = await apiClient.getKeyMaterial(recoveryPk, protocol);
+		const response = await apiClient.wallet.getKeyMaterial(
+			recoveryPk,
+			protocol,
+		);
 
 		const compositeJson = await buildCompositeBlob(
 			clientShareHex,
