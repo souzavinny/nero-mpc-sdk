@@ -88,25 +88,25 @@ export function useNeroMFA(): UseNeroMFAReturn {
 	}, [sdk, wrap]);
 
 	const setupTotp = useCallback(
-		() => wrap(() => sdk!.apiClientForHooks.mfaTotpSetup()),
+		() => wrap(() => sdk!.apiClientForHooks.mfa.totpSetup()),
 		[sdk, wrap],
 	);
 
 	const verifyTotpSetup = useCallback(
 		(methodId: string, code: string) =>
-			wrap(() => sdk!.apiClientForHooks.mfaTotpVerifySetup(methodId, code)),
+			wrap(() => sdk!.apiClientForHooks.mfa.totpVerifySetup(methodId, code)),
 		[sdk, wrap],
 	);
 
 	const setupWebAuthn = useCallback(
-		() => wrap(() => sdk!.apiClientForHooks.mfaWebAuthnSetup()),
+		() => wrap(() => sdk!.apiClientForHooks.mfa.webAuthnSetup()),
 		[sdk, wrap],
 	);
 
 	const verifyWebAuthnSetup = useCallback(
 		(methodId: string, credential: Record<string, unknown>) =>
 			wrap(() =>
-				sdk!.apiClientForHooks.mfaWebAuthnVerifySetup(methodId, credential),
+				sdk!.apiClientForHooks.mfa.webAuthnVerifySetup(methodId, credential),
 			),
 		[sdk, wrap],
 	);
@@ -114,7 +114,7 @@ export function useNeroMFA(): UseNeroMFAReturn {
 	const createChallenge = useCallback(
 		(operation: MFAOperationType, methodType?: MFAMethodType) =>
 			wrap(() =>
-				sdk!.apiClientForHooks.mfaCreateChallenge(operation, methodType),
+				sdk!.apiClientForHooks.mfa.createChallenge(operation, methodType),
 			),
 		[sdk, wrap],
 	);
@@ -129,26 +129,26 @@ export function useNeroMFA(): UseNeroMFAReturn {
 			},
 		) =>
 			wrap(() =>
-				sdk!.apiClientForHooks.mfaVerifyChallenge(challengeId, response),
+				sdk!.apiClientForHooks.mfa.verifyChallenge(challengeId, response),
 			),
 		[sdk, wrap],
 	);
 
 	const disableMethod = useCallback(
 		(methodId: string) =>
-			wrap(() => sdk!.apiClientForHooks.mfaDisableMethod(methodId)),
+			wrap(() => sdk!.apiClientForHooks.mfa.disableMethod(methodId)),
 		[sdk, wrap],
 	);
 
 	const regenerateBackupCodes = useCallback(
 		(methodId: string) =>
-			wrap(() => sdk!.apiClientForHooks.mfaRegenerateBackupCodes(methodId)),
+			wrap(() => sdk!.apiClientForHooks.mfa.regenerateBackupCodes(methodId)),
 		[sdk, wrap],
 	);
 
 	const updatePolicy = useCallback(
 		(policy: MFAPolicy) =>
-			wrap(() => sdk!.apiClientForHooks.mfaUpdatePolicy(policy)),
+			wrap(() => sdk!.apiClientForHooks.mfa.updatePolicy(policy)),
 		[sdk, wrap],
 	);
 

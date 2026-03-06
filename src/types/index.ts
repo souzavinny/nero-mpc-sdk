@@ -1,3 +1,6 @@
+import type { RetryConfig } from "../transport/middleware/retry";
+import type { RequestMiddleware } from "../transport/request-pipeline";
+
 export interface KeyShare {
 	partyId: number;
 	privateShare: string;
@@ -124,6 +127,9 @@ export interface SDKConfig {
 	sessionTime?: number;
 	web3AuthClientId?: string;
 	protocol?: "pedersen" | "dkls";
+	requestMiddleware?: RequestMiddleware[];
+	retryConfig?: RetryConfig;
+	storage?: StorageAdapter;
 }
 
 export interface AuthTokens {

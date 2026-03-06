@@ -66,21 +66,23 @@ describe("DKLSClient 409 conflict retry", () => {
 		};
 
 		const apiClient = {
-			dklsSigningInit: mockSigningInit,
-			dklsSigningCancel: mockCancel,
-			dklsSigningNonce: vi.fn().mockResolvedValue({
-				sessionId: "new-session-id",
-				r: "0xr",
-				rValue: "0xrv",
-				backendNonceReveal: { partyId: 1, R: "R" },
-				backendPartialSignature: { partyId: 1, sigma: "s", R: "R" },
-			}),
-			dklsMtaRound1: vi.fn().mockResolvedValue({
-				mta1Response: { sessionId: "s", response: { responses: [] } },
-				mta2Response: { sessionId: "s", response: { responses: [] } },
-			}),
-			dklsMtaRound2: vi.fn().mockResolvedValue({ success: true }),
-			dklsSigningPartial: vi.fn().mockResolvedValue(mockSigningResult),
+			dkls: {
+				signingInit: mockSigningInit,
+				signingCancel: mockCancel,
+				signingNonce: vi.fn().mockResolvedValue({
+					sessionId: "new-session-id",
+					r: "0xr",
+					rValue: "0xrv",
+					backendNonceReveal: { partyId: 1, R: "R" },
+					backendPartialSignature: { partyId: 1, sigma: "s", R: "R" },
+				}),
+				mtaRound1: vi.fn().mockResolvedValue({
+					mta1Response: { sessionId: "s", response: { responses: [] } },
+					mta2Response: { sessionId: "s", response: { responses: [] } },
+				}),
+				mtaRound2: vi.fn().mockResolvedValue({ success: true }),
+				signingPartial: vi.fn().mockResolvedValue(mockSigningResult),
+			},
 		};
 
 		const client = new DKLSClient({
@@ -142,25 +144,27 @@ describe("DKLSClient 409 conflict retry", () => {
 		};
 
 		const apiClient = {
-			dklsSigningInit: mockSigningInit,
-			dklsSigningCancel: mockCancel,
-			dklsSigningNonce: vi.fn().mockResolvedValue({
-				sessionId: "new-session-id",
-				r: "0xr",
-				rValue: "0xrv",
-				backendNonceReveal: { partyId: 1, R: "R" },
-			}),
-			dklsMtaRound1: vi.fn().mockResolvedValue({
-				mta1Response: { sessionId: "s", response: { responses: [] } },
-				mta2Response: { sessionId: "s", response: { responses: [] } },
-			}),
-			dklsMtaRound2: vi.fn().mockResolvedValue({ success: true }),
-			dklsSigningPartial: vi.fn().mockResolvedValue({
-				signature: "0xsig",
-				r: "0xr",
-				s: "0xs",
-				v: 27,
-			}),
+			dkls: {
+				signingInit: mockSigningInit,
+				signingCancel: mockCancel,
+				signingNonce: vi.fn().mockResolvedValue({
+					sessionId: "new-session-id",
+					r: "0xr",
+					rValue: "0xrv",
+					backendNonceReveal: { partyId: 1, R: "R" },
+				}),
+				mtaRound1: vi.fn().mockResolvedValue({
+					mta1Response: { sessionId: "s", response: { responses: [] } },
+					mta2Response: { sessionId: "s", response: { responses: [] } },
+				}),
+				mtaRound2: vi.fn().mockResolvedValue({ success: true }),
+				signingPartial: vi.fn().mockResolvedValue({
+					signature: "0xsig",
+					r: "0xr",
+					s: "0xs",
+					v: 27,
+				}),
+			},
 		};
 
 		const client = new DKLSClient({

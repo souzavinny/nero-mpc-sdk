@@ -49,7 +49,7 @@ export class DKGClient {
 	async execute(): Promise<DKGResult> {
 		try {
 			// Step 1: Initiate — receive backend commitment + ephemeral key
-			const initResult = await this.apiClient.dkgInitiate();
+			const initResult = await this.apiClient.dkg.initiate();
 			const { sessionId, backendCommitment, ephemeralPublicKey } = initResult;
 
 			const threshold = 2;
@@ -93,12 +93,15 @@ export class DKGClient {
 			const clientCommitment = createVSSSCommitments(partyId, this.polynomial);
 			this.receivedCommitments.set(partyId, clientCommitment);
 
-			const commitResult = await this.apiClient.dkgSubmitCommitment(sessionId, {
-				partyId,
-				commitments: clientCommitment.coefficientCommitments,
-				publicKey: this.ephemeralKeyPair.publicKey,
-				proofOfKnowledge: clientCommitment.proofOfKnowledge,
-			});
+			const commitResult = await this.apiClient.dkg.submitCommitment(
+				sessionId,
+				{
+					partyId,
+					commitments: clientCommitment.coefficientCommitments,
+					publicKey: this.ephemeralKeyPair.publicKey,
+					proofOfKnowledge: clientCommitment.proofOfKnowledge,
+				},
+			);
 
 			// Decrypt backend's share
 			const backendShare = commitResult.backendShareForClient;
@@ -142,7 +145,7 @@ export class DKGClient {
 				ephemeralPublicKey,
 			);
 
-			const shareResult = await this.apiClient.dkgSubmitShare(sessionId, {
+			const shareResult = await this.apiClient.dkg.submitShare(sessionId, {
 				fromPartyId: partyId,
 				toPartyId: backendCommitment.partyId,
 				ephemeralPublicKey: encrypted.ephemeralPublicKey,

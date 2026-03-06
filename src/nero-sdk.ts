@@ -3,6 +3,7 @@ import { BUILTIN_CHAINS, getChainConfig } from "./chains/configs";
 import type { ChainConfig } from "./chains/types";
 import { type EIP1193Provider, NeroProvider } from "./core";
 import { ClientKeyManager, generateDeviceKey } from "./core/client-key-manager";
+import { ConnectionStateMachine } from "./core/connection-state";
 import {
 	decryptWithPassword,
 	encryptWithPassword,
@@ -17,6 +18,8 @@ import {
 	offlineReconstructKey as coreOfflineReconstruct,
 	setupSelfCustodyRecovery as coreSetupSelfCustody,
 } from "./core/self-custody-recovery";
+import { createTokenStorage } from "./core/storage-adapters";
+import { AuthError, WalletError } from "./errors";
 import { DKGClient } from "./protocols/dkg/dkg-client";
 import {
 	CURVE_ORDER,
@@ -118,7 +121,7 @@ export class NeroMpcSDK {
 	private _backendShare: string | null = null;
 	private _provider: NeroProvider | null = null;
 	private _chainId: number;
-	private _connectionStatus: ConnectionStatus = "disconnected";
+	private _connectionState = new ConnectionStateMachine();
 	private _customChains: Map<number, ChainConfig> = new Map();
 	private _cachedWalletInfo: WalletInfo | null = null;
 	private _dklsClient: DKLSClient | null = null;
@@ -127,6 +130,7 @@ export class NeroMpcSDK {
 	private _eventListeners: Map<string, Set<(...args: unknown[]) => void>> =
 		new Map();
 	private _apiClientForHooksWarned = false;
+	private _tokenStorage: StorageAdapter;
 
 	constructor(config: SDKConfig) {
 		this.config = {
@@ -138,8 +142,12 @@ export class NeroMpcSDK {
 
 		this._protocol = this.config.protocol ?? "dkls";
 		this._chainId = this.config.chainId!;
-		this.apiClient = new APIClient(this.config);
+		this.apiClient = new APIClient(this.config, {
+			middleware: this.config.requestMiddleware,
+			retryConfig: this.config.retryConfig,
+		});
 		this.chainManager = new ChainManager(this._chainId);
+		this._tokenStorage = this.config.storage ?? createTokenStorage();
 
 		if (this.config.wsUrl) {
 			this.wsClient = new WebSocketClient(this.config.wsUrl);
@@ -170,11 +178,11 @@ export class NeroMpcSDK {
 	}
 
 	get connected(): boolean {
-		return this._connectionStatus === "connected";
+		return this._connectionState.state === "connected";
 	}
 
 	get status(): ConnectionStatus {
-		return this._connectionStatus;
+		return this._connectionState.state;
 	}
 
 	get provider(): EIP1193Provider | null {
@@ -229,13 +237,26 @@ export class NeroMpcSDK {
 			?.delete(listener as (...args: unknown[]) => void);
 	}
 
+	once<E extends SDKEvent>(
+		event: E,
+		listener: (data: SDKEventMap[E]) => void,
+	): void {
+		const wrapper = ((data: SDKEventMap[E]) => {
+			this.off(event, wrapper as (data: SDKEventMap[E]) => void);
+			listener(data);
+		}) as (...args: unknown[]) => void;
+		this.on(event, wrapper as (data: SDKEventMap[E]) => void);
+	}
+
 	private emit<E extends SDKEvent>(event: E, data: SDKEventMap[E]): void {
 		const listeners = this._eventListeners.get(event);
 		if (!listeners) return;
 		for (const listener of listeners) {
 			try {
 				listener(data);
-			} catch {}
+			} catch (e) {
+				console.error("[NeroMpcSDK] Event listener error:", e);
+			}
 		}
 	}
 
@@ -261,11 +282,11 @@ export class NeroMpcSDK {
 			this.apiClient.setTokens(storedTokens);
 
 			try {
-				this._user = await this.apiClient.getCurrentUser();
+				this._user = await this.apiClient.auth.getCurrentUser();
 				await this.initializeWallet();
 			} catch {
 				this.apiClient.clearTokens();
-				this.clearStoredTokens();
+				await this.clearStoredTokens();
 			}
 		}
 
@@ -276,7 +297,7 @@ export class NeroMpcSDK {
 		provider: OAuthProvider,
 		redirectUri: string,
 	): Promise<{ url: string; state: string }> {
-		return this.apiClient.getOAuthUrl(provider, redirectUri);
+		return this.apiClient.auth.getOAuthUrl(provider, redirectUri);
 	}
 
 	async handleOAuthCallback(
@@ -287,7 +308,7 @@ export class NeroMpcSDK {
 	): Promise<{ user: User; requiresDKG: boolean }> {
 		const fingerprint = this.getDeviceFingerprint();
 
-		const result = await this.apiClient.handleOAuthCallback(
+		const result = await this.apiClient.auth.handleOAuthCallback(
 			provider,
 			code,
 			state,
@@ -295,6 +316,7 @@ export class NeroMpcSDK {
 			{ redirectUri },
 		);
 
+		this.apiClient.setTokens(result.tokens);
 		this._user = result.user;
 		await this.storeTokens(result.tokens);
 
@@ -371,14 +393,15 @@ export class NeroMpcSDK {
 		email: string,
 		type: "otp" | "magic_link" = "otp",
 	): Promise<{ message: string; expiresInMinutes: number }> {
-		return this.apiClient.sendEmailAuth(email, type);
+		return this.apiClient.auth.sendEmailAuth(email, type);
 	}
 
 	async verifyEmailLogin(
 		email: string,
 		code: string,
 	): Promise<{ user: User; requiresDKG: boolean }> {
-		const result = await this.apiClient.verifyEmailAuth(email, code);
+		const result = await this.apiClient.auth.verifyEmailAuth(email, code);
+		this.apiClient.setTokens(result.tokens);
 		this._user = result.user;
 		await this.storeTokens(result.tokens);
 
@@ -398,14 +421,15 @@ export class NeroMpcSDK {
 	async loginWithPhone(
 		phoneNumber: string,
 	): Promise<{ message: string; expiresInMinutes: number }> {
-		return this.apiClient.sendPhoneOTP(phoneNumber);
+		return this.apiClient.auth.sendPhoneOTP(phoneNumber);
 	}
 
 	async verifyPhoneLogin(
 		phoneNumber: string,
 		code: string,
 	): Promise<{ user: User; requiresDKG: boolean }> {
-		const result = await this.apiClient.verifyPhoneOTP(phoneNumber, code);
+		const result = await this.apiClient.auth.verifyPhoneOTP(phoneNumber, code);
+		this.apiClient.setTokens(result.tokens);
 		this._user = result.user;
 		await this.storeTokens(result.tokens);
 
@@ -425,7 +449,8 @@ export class NeroMpcSDK {
 	async loginWithCustomJwt(
 		options: CustomLoginOptions,
 	): Promise<{ user: User; requiresDKG: boolean }> {
-		const result = await this.apiClient.customLogin(options);
+		const result = await this.apiClient.auth.customLogin(options);
+		this.apiClient.setTokens(result.tokens);
 		this._user = result.user;
 		await this.storeTokens(result.tokens);
 
@@ -443,7 +468,7 @@ export class NeroMpcSDK {
 	}
 
 	async getSessionStatus(): Promise<SessionStatus> {
-		return this.apiClient.sessionStatus();
+		return this.apiClient.session.status();
 	}
 
 	async reconnectSession(dappShare?: string): Promise<SessionReconnectResult> {
@@ -456,7 +481,8 @@ export class NeroMpcSDK {
 			);
 		}
 
-		const result = await this.apiClient.sessionReconnect(share);
+		const result = await this.apiClient.session.reconnect(share);
+		this.apiClient.setTokens(result.tokens);
 		this._user = result.user;
 		await this.storeTokens(result.tokens);
 
@@ -485,13 +511,11 @@ export class NeroMpcSDK {
 		}>;
 		count: number;
 	}> {
-		return this.apiClient.listWallets();
+		return this.apiClient.wallet.list();
 	}
 
 	async getKeyMaterial(): Promise<ReconstructedKey> {
-		if (!this._user) {
-			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
-		}
+		this.requireAuth();
 
 		if (this._cachedReconstructedKey) {
 			return this._cachedReconstructedKey;
@@ -502,10 +526,8 @@ export class NeroMpcSDK {
 		const { privateKey: ephPriv, publicKey: ephPub } =
 			generateEphemeralKeyPair();
 
-		const response: KeyMaterialResponse = await this.apiClient.getKeyMaterial(
-			ephPub,
-			protocol,
-		);
+		const response: KeyMaterialResponse =
+			await this.apiClient.wallet.getKeyMaterial(ephPub, protocol);
 
 		const { share: backendShare } = await decryptShare(
 			response.encryptedShare,
@@ -572,17 +594,13 @@ export class NeroMpcSDK {
 	}
 
 	async generateWallet(): Promise<WalletInfo> {
-		if (!this._user) {
-			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
-		}
+		this.requireAuth();
 
 		if (this._protocol === "dkls") {
 			return this.generateWalletDKLS();
 		}
 
-		if (!this.keyManager) {
-			throw new SDKError("SDK not initialized", "NOT_INITIALIZED");
-		}
+		this.requireInitialized();
 
 		const dkgClient = new DKGClient({
 			apiClient: this.apiClient,
@@ -600,17 +618,17 @@ export class NeroMpcSDK {
 			throw new SDKError("Failed to get key share", "KEY_SHARE_ERROR");
 		}
 
-		await this.keyManager.storeKeyShare(keyShare);
+		await this.keyManager!.storeKeyShare(keyShare);
 
 		this._publicKey = result.publicKey!;
 		this._partyPublicShares = dkgClient.getPartyPublicShares();
 
-		await this.keyManager.storePartyPublicShares(this._partyPublicShares);
-		await this.keyManager.storePublicKey(this._publicKey);
+		await this.keyManager!.storePartyPublicShares(this._partyPublicShares);
+		await this.keyManager!.storePublicKey(this._publicKey);
 
 		this._backendShare = dkgClient.getBackendShare();
 		if (this._backendShare) {
-			await this.keyManager.storeBackendShare(this._backendShare);
+			await this.keyManager!.storeBackendShare(this._backendShare);
 		}
 
 		this._wallet = this.createSmartWallet(
@@ -670,9 +688,9 @@ export class NeroMpcSDK {
 		try {
 			const tokens = this.apiClient.getTokens();
 			if (tokens?.dappShare) {
-				await this.apiClient.sessionRevoke();
+				await this.apiClient.session.revoke();
 			}
-			await this.apiClient.logout();
+			await this.apiClient.auth.logout();
 		} catch {}
 
 		this._user = null;
@@ -681,9 +699,9 @@ export class NeroMpcSDK {
 		this._dklsClient = null;
 		this._dklsWalletAddress = null;
 		this._cachedReconstructedKey = null;
-		this._connectionStatus = "disconnected";
+		this._connectionState.reset();
 		this.apiClient.clearTokens();
-		this.clearStoredTokens();
+		await this.clearStoredTokens();
 
 		if (this._provider) {
 			this._provider.disconnect();
@@ -699,13 +717,13 @@ export class NeroMpcSDK {
 	async connect(): Promise<EIP1193Provider> {
 		if (this._protocol === "dkls") {
 			if (!this._dklsWalletAddress) {
-				throw new SDKError("DKLS wallet not available", "NO_WALLET");
+				throw WalletError.noWallet();
 			}
 		} else if (!this._wallet) {
-			throw new SDKError("Wallet not available", "NO_WALLET");
+			throw WalletError.noWallet();
 		}
 
-		this._connectionStatus = "connecting";
+		this._connectionState.transition("connecting");
 		this.emit("connecting", undefined);
 
 		try {
@@ -720,12 +738,12 @@ export class NeroMpcSDK {
 			});
 
 			this._provider.connect();
-			this._connectionStatus = "connected";
+			this._connectionState.transition("connected");
 			this.emit("connected", { chainId: this._chainId });
 
 			return this._provider;
 		} catch (error) {
-			this._connectionStatus = "errored";
+			this._connectionState.transition("errored");
 			this.emit("errored", {
 				error: error instanceof Error ? error : new Error(String(error)),
 			});
@@ -737,7 +755,7 @@ export class NeroMpcSDK {
 		if (this._provider) {
 			this._provider.disconnect();
 		}
-		this._connectionStatus = "disconnected";
+		this._connectionState.transition("disconnected");
 		this.emit("disconnected", undefined);
 		await this.logout();
 	}
@@ -831,10 +849,10 @@ export class NeroMpcSDK {
 	}> {
 		const type = options?.type ?? "totp";
 		if (type === "webauthn") {
-			const result = await this.apiClient.mfaWebAuthnSetup();
+			const result = await this.apiClient.mfa.webAuthnSetup();
 			return { methodId: result.methodId };
 		}
-		const result = await this.apiClient.mfaTotpSetup();
+		const result = await this.apiClient.mfa.totpSetup();
 		return { methodId: result.methodId };
 	}
 
@@ -845,7 +863,7 @@ export class NeroMpcSDK {
 		securityLevel: string;
 		hasLocalShare: boolean;
 	}> {
-		const info = await this.apiClient.getWalletInfoV2();
+		const info = await this.apiClient.wallet.getInfoV2();
 		let hasLocalShare = false;
 		if (this._protocol === "dkls") {
 			const dklsClient = this.getOrCreateDKLSClient();
@@ -864,11 +882,11 @@ export class NeroMpcSDK {
 	}
 
 	async getMFAStatus(): Promise<MFAStatus> {
-		return this.apiClient.mfaGetStatus();
+		return this.apiClient.mfa.getStatus();
 	}
 
 	async getUserProfile(): Promise<{ profile: UserProfile }> {
-		return this.apiClient.userGetProfile();
+		return this.apiClient.user.getProfile();
 	}
 
 	private getAccounts(): string[] {
@@ -1028,18 +1046,18 @@ export class NeroMpcSDK {
 	}
 
 	async exportBackupV2(password: string): Promise<BackupExportResponse> {
-		return this.apiClient.backupExport(password);
+		return this.apiClient.backup.export(password);
 	}
 
 	async importBackupV2(
 		backup: BackupData,
 		password: string,
 	): Promise<BackupImportResponse> {
-		return this.apiClient.backupImport(backup, password);
+		return this.apiClient.backup.import(backup, password);
 	}
 
 	async getBackupInfo(): Promise<BackupInfo> {
-		return this.apiClient.backupInfo();
+		return this.apiClient.backup.info();
 	}
 
 	async setupRecovery(
@@ -1056,21 +1074,21 @@ export class NeroMpcSDK {
 		verificationRequired: boolean;
 		expiresAt?: string;
 	}> {
-		return this.apiClient.recoverySetup(methodType, config, encryptedData);
+		return this.apiClient.recovery.setup(methodType, config, encryptedData);
 	}
 
 	async listRecoveryMethods(
 		includeInactive?: boolean,
 	): Promise<{ methods: RecoveryMethod[]; count: number }> {
-		return this.apiClient.recoveryListMethods(includeInactive);
+		return this.apiClient.recovery.listMethods(includeInactive);
 	}
 
 	async deleteRecoveryMethod(methodId: string): Promise<{ deleted: true }> {
-		return this.apiClient.recoveryDeleteMethod(methodId);
+		return this.apiClient.recovery.deleteMethod(methodId);
 	}
 
 	async initiateRecovery(methodId: string): Promise<RecoveryAttempt> {
-		return this.apiClient.recoveryInitiate(methodId);
+		return this.apiClient.recovery.initiate(methodId);
 	}
 
 	async verifyRecovery(
@@ -1083,7 +1101,7 @@ export class NeroMpcSDK {
 		canComplete: boolean;
 		timelockExpiresAt: string | null;
 	}> {
-		return this.apiClient.recoveryVerify(attemptId, verificationCode);
+		return this.apiClient.recovery.verify(attemptId, verificationCode);
 	}
 
 	async completeRecovery(attemptId: string): Promise<{
@@ -1091,11 +1109,11 @@ export class NeroMpcSDK {
 		status: string;
 		recoveredData: unknown;
 	}> {
-		return this.apiClient.recoveryComplete(attemptId);
+		return this.apiClient.recovery.complete(attemptId);
 	}
 
 	async cancelRecovery(attemptId: string): Promise<{ cancelled: true }> {
-		return this.apiClient.recoveryCancel(attemptId);
+		return this.apiClient.recovery.cancel(attemptId);
 	}
 
 	async addFactor(
@@ -1111,33 +1129,29 @@ export class NeroMpcSDK {
 		};
 		factorKey?: string;
 	}> {
-		return this.apiClient.factorAdd(factorType, encryptedShare, options);
+		return this.apiClient.factor.add(factorType, encryptedShare, options);
 	}
 
 	async listFactors(): Promise<{ factors: Factor[]; count: number }> {
-		return this.apiClient.factorList();
+		return this.apiClient.factor.list();
 	}
 
 	async deleteFactor(id: string): Promise<{ deleted: true }> {
-		return this.apiClient.factorDelete(id);
+		return this.apiClient.factor.delete(id);
 	}
 
 	async recoverShareWithFactor(
 		factorId: string,
 		verificationCode: string,
 	): Promise<{ recoveredShare: unknown }> {
-		return this.apiClient.factorRecoverShare(factorId, verificationCode);
+		return this.apiClient.factor.recoverShare(factorId, verificationCode);
 	}
 
 	async setupSelfCustodyRecovery(
 		password: string,
 	): Promise<{ factorId: string }> {
-		if (!this._user) {
-			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
-		}
-		if (!this.hasWallet) {
-			throw new SDKError("No wallet available", "NO_WALLET");
-		}
+		this.requireAuth();
+		this.requireWallet();
 
 		const clientShare = await this.getClientShare();
 		const clientShareHex = scalarToHex(clientShare);
@@ -1150,7 +1164,7 @@ export class NeroMpcSDK {
 			protocol,
 		});
 
-		const result = await this.apiClient.factorAdd("password", compositeJson, {
+		const result = await this.apiClient.factor.add("password", compositeJson, {
 			password: factorCredential,
 		});
 
@@ -1167,6 +1181,24 @@ export class NeroMpcSDK {
 			password,
 			expectedAddress,
 		});
+	}
+
+	private requireAuth(): void {
+		if (!this._user) {
+			throw AuthError.notAuthenticated();
+		}
+	}
+
+	private requireWallet(): void {
+		if (!this.hasWallet) {
+			throw WalletError.noWallet();
+		}
+	}
+
+	private requireInitialized(): void {
+		if (!this.keyManager) {
+			throw WalletError.notInitialized();
+		}
 	}
 
 	private async initializeWallet(): Promise<void> {
@@ -1277,24 +1309,22 @@ export class NeroMpcSDK {
 	}
 
 	private async storeTokens(tokens: AuthTokens): Promise<void> {
-		if (typeof localStorage === "undefined") return;
-
 		const tokenKey = `${this.config.storagePrefix}:tokens`;
 		const plaintext = JSON.stringify(tokens);
 
 		if (this.deviceKey) {
 			const encrypted = await encryptWithPassword(plaintext, this.deviceKey);
-			localStorage.setItem(tokenKey, JSON.stringify(encrypted));
+			await this._tokenStorage.set(tokenKey, JSON.stringify(encrypted));
 			return;
 		}
 
-		localStorage.setItem(tokenKey, plaintext);
+		await this._tokenStorage.set(tokenKey, plaintext);
 	}
 
 	private async loadStoredTokens(): Promise<AuthTokens | null> {
-		if (typeof localStorage === "undefined") return null;
-
-		const stored = localStorage.getItem(`${this.config.storagePrefix}:tokens`);
+		const stored = await this._tokenStorage.get(
+			`${this.config.storagePrefix}:tokens`,
+		);
 		if (!stored) return null;
 
 		try {
@@ -1316,10 +1346,8 @@ export class NeroMpcSDK {
 		return null;
 	}
 
-	private clearStoredTokens(): void {
-		if (typeof localStorage !== "undefined") {
-			localStorage.removeItem(`${this.config.storagePrefix}:tokens`);
-		}
+	private async clearStoredTokens(): Promise<void> {
+		await this._tokenStorage.delete(`${this.config.storagePrefix}:tokens`);
 	}
 }
 

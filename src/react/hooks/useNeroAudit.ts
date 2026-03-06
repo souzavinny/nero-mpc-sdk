@@ -48,7 +48,7 @@ export function useNeroAudit(): UseNeroAuditReturn {
 	const getLogs = useCallback(
 		(params?: AuditLogQuery) =>
 			wrap(async () => {
-				const result = await sdk!.apiClientForHooks.auditGetLogs(params);
+				const result = await sdk!.apiClientForHooks.audit.getLogs(params);
 				setLogs(result.logs);
 				return result;
 			}),
@@ -58,7 +58,7 @@ export function useNeroAudit(): UseNeroAuditReturn {
 	const getStats = useCallback(
 		() =>
 			wrap(async () => {
-				const result = await sdk!.apiClientForHooks.auditGetStats();
+				const result = await sdk!.apiClientForHooks.audit.getStats();
 				setStats(result);
 				return result;
 			}),
@@ -68,7 +68,7 @@ export function useNeroAudit(): UseNeroAuditReturn {
 	const getRecent = useCallback(
 		() =>
 			wrap(async () => {
-				const result = await sdk!.apiClientForHooks.auditGetRecent();
+				const result = await sdk!.apiClientForHooks.audit.getRecent();
 				setLogs(result.logs);
 				return result;
 			}),

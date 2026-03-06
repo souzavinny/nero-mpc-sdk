@@ -40,6 +40,14 @@ export {
 	offlineReconstructKey,
 } from "./self-custody-recovery";
 
+export { ConnectionStateMachine } from "./connection-state";
+
+export {
+	LocalStorageAdapter,
+	SessionStorageAdapter,
+	createTokenStorage,
+} from "./storage-adapters";
+
 export {
 	NeroProvider,
 	createNeroProvider,
