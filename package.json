@@ -1,40 +1,41 @@
 {
   "name": "@nerochain/mpc-sdk",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "NERO MPC SDK - Browser-based threshold signature client for self-custodial wallets",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     },
     "./react": {
       "types": "./dist/react.d.ts",
-      "import": "./dist/react.mjs",
-      "require": "./dist/react.js"
+      "import": "./dist/react.js",
+      "require": "./dist/react.cjs"
     },
     "./chains": {
       "types": "./dist/chains.d.ts",
-      "import": "./dist/chains.mjs",
-      "require": "./dist/chains.js"
+      "import": "./dist/chains.js",
+      "require": "./dist/chains.cjs"
     },
     "./modal": {
       "types": "./dist/modal.d.ts",
-      "import": "./dist/modal.mjs",
-      "require": "./dist/modal.js"
+      "import": "./dist/modal.js",
+      "require": "./dist/modal.cjs"
     },
     "./no-modal": {
       "types": "./dist/no-modal.d.ts",
-      "import": "./dist/no-modal.mjs",
-      "require": "./dist/no-modal.js"
+      "import": "./dist/no-modal.js",
+      "require": "./dist/no-modal.cjs"
     },
     "./aa": {
       "types": "./dist/aa.d.ts",
-      "import": "./dist/aa.mjs",
-      "require": "./dist/aa.js"
+      "import": "./dist/aa.js",
+      "require": "./dist/aa.cjs"
     }
   },
   "files": [
