@@ -88,6 +88,13 @@ export class WalletError extends SDKError {
 	static notInitialized(): WalletError {
 		return new WalletError("SDK not initialized", "NOT_INITIALIZED");
 	}
+
+	static recoveryRequired(): WalletError {
+		return new WalletError(
+			"Client key share not found. Set up recovery to restore your wallet, or create a new wallet.",
+			"RECOVERY_REQUIRED",
+		);
+	}
 }
 
 export class SigningError extends SDKError {

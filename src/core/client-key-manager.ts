@@ -1,3 +1,4 @@
+import { keccak_256 } from "@noble/hashes/sha3";
 import type { KeyShare, WalletInfo } from "../types";
 import { SDKError } from "../types";
 import { generateRandomHex, hashSha256 } from "./crypto-primitives";
@@ -229,7 +230,6 @@ function bytesToHex(bytes: Uint8Array): string {
 }
 
 function keccak256(data: Uint8Array): Uint8Array {
-	const { keccak_256 } = require("@noble/hashes/sha3");
 	return keccak_256(data);
 }
 

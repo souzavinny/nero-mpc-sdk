@@ -550,6 +550,8 @@ export type SDKErrorCode =
 	| "SELF_CUSTODY_SETUP_FAILED"
 	| "SELF_CUSTODY_RECOVERY_FAILED"
 	| "INVALID_COMPOSITE_BLOB"
+	| "RECOVERY_REQUIRED"
+	| "BACKUP_RESTORE_FAILED"
 	| (string & {});
 
 export type SDKEvent =

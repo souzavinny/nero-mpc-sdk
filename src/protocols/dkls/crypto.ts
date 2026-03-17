@@ -6,8 +6,19 @@
  */
 
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { keccak_256 } from "@noble/hashes/sha3";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import {
+	type MtAAliceRound1Serialized,
+	type MtAAliceRound3Serialized,
+	type MtABobRound2Serialized,
+	deserializeMtABobRound2,
+	mtaAliceRound1,
+	mtaAliceRound3,
+	serializeMtAAliceRound1,
+	serializeMtAAliceRound3,
+} from "./mta-protocol";
 import type {
 	DKLSKeyShare,
 	DKLSKeygenCommitment,
@@ -307,7 +318,6 @@ export function deriveEthereumAddress(jointPublicKeyHex: string): string {
 	const uncompressed = point.toRawBytes(false);
 	const pubKeyWithoutPrefix = uncompressed.slice(1);
 
-	const { keccak_256 } = require("@noble/hashes/sha3");
 	const hash = keccak_256(pubKeyWithoutPrefix);
 	const addressBytes = hash.slice(-20);
 
@@ -336,11 +346,9 @@ export interface MtAClientState {
 
 export function initMtAForSigning(signingState: DKLSSigningClientState): {
 	mtaState: MtAClientState;
-	mta1Setup: import("./mta-protocol").MtAAliceRound1Serialized;
-	mta2Setup: import("./mta-protocol").MtAAliceRound1Serialized;
+	mta1Setup: MtAAliceRound1Serialized;
+	mta2Setup: MtAAliceRound1Serialized;
 } {
-	const { mtaAliceRound1, serializeMtAAliceRound1 } = require("./mta-protocol");
-
 	const secretShare = BigInt(`0x${signingState.keyShare.secretShare}`);
 	const kA_inv = modInverse(signingState.nonceShare);
 	const skA_over_kA = mod(secretShare * kA_inv);
@@ -363,19 +371,13 @@ export function initMtAForSigning(signingState: DKLSSigningClientState): {
 
 export function processMtARound2Response(
 	mtaState: MtAClientState,
-	mta1Response: import("./mta-protocol").MtABobRound2Serialized,
-	mta2Response: import("./mta-protocol").MtABobRound2Serialized,
+	mta1Response: MtABobRound2Serialized,
+	mta2Response: MtABobRound2Serialized,
 ): {
 	mtaState: MtAClientState;
-	mta1Encrypted: import("./mta-protocol").MtAAliceRound3Serialized;
-	mta2Encrypted: import("./mta-protocol").MtAAliceRound3Serialized;
+	mta1Encrypted: MtAAliceRound3Serialized;
+	mta2Encrypted: MtAAliceRound3Serialized;
 } {
-	const {
-		mtaAliceRound3,
-		deserializeMtABobRound2,
-		serializeMtAAliceRound3,
-	} = require("./mta-protocol");
-
 	const mta1BobMsg = deserializeMtABobRound2(mta1Response);
 	const {
 		state: updatedMta1State,

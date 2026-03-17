@@ -1,3 +1,4 @@
+import { Transaction } from "ethers";
 import { ChainManager } from "./chains/chain-manager";
 import { BUILTIN_CHAINS, getChainConfig } from "./chains/configs";
 import type { ChainConfig } from "./chains/types";
@@ -305,7 +306,7 @@ export class NeroMpcSDK {
 		code: string,
 		state: string,
 		redirectUri?: string,
-	): Promise<{ user: User; requiresDKG: boolean }> {
+	): Promise<{ user: User; requiresDKG: boolean; walletExists?: boolean }> {
 		const fingerprint = this.getDeviceFingerprint();
 
 		const result = await this.apiClient.auth.handleOAuthCallback(
@@ -327,13 +328,25 @@ export class NeroMpcSDK {
 		if (!result.requiresDKG && result.wallet) {
 			if (this._protocol === "dkls") {
 				const dklsClient = this.getOrCreateDKLSClient();
-				const keyShare = await dklsClient.loadKeyShare();
+				let keyShare = await dklsClient.loadKeyShare();
+
+				if (!keyShare) {
+					const restored = await this.restoreClientShareFromServer();
+					if (restored) {
+						keyShare = await dklsClient.loadKeyShare();
+					}
+				}
+
 				if (keyShare) {
 					this._dklsWalletAddress = result.wallet.eoaAddress;
 					await this.connect();
 				} else {
 					this.emit("login", { user: result.user });
-					return { user: result.user, requiresDKG: true };
+					return {
+						user: result.user,
+						requiresDKG: false,
+						walletExists: true,
+					};
 				}
 			} else {
 				await this.initializeWallet();
@@ -557,29 +570,204 @@ export class NeroMpcSDK {
 
 		this._cachedReconstructedKey = result;
 
+		this.ensureServerBackupExists().catch(() => {});
+
 		return result;
+	}
+
+	private async ensureServerBackupExists(): Promise<void> {
+		try {
+			const response = await this.apiClient.wallet.getClientShare();
+			if (!response?.found) {
+				await this.backupClientShareToServer();
+			}
+		} catch (err) {
+			console.warn("[NERO SDK] ensureServerBackupExists failed:", err);
+		}
 	}
 
 	private async getClientShare(): Promise<bigint> {
 		if (this._protocol === "dkls") {
 			const dklsClient = this.getOrCreateDKLSClient();
-			const keyShare = await dklsClient.loadKeyShare();
-			if (!keyShare) {
-				throw new SDKError("No DKLS key share found", "NO_KEY_SHARE");
+			let keyShare = await dklsClient.loadKeyShare();
+			if (keyShare) {
+				return hexToScalar(keyShare.secretShare);
 			}
-			return hexToScalar(keyShare.secretShare);
+
+			const restored = await this.restoreClientShareFromServer();
+			if (restored) {
+				keyShare = await dklsClient.loadKeyShare();
+				if (keyShare) {
+					return hexToScalar(keyShare.secretShare);
+				}
+			}
+
+			return this.throwRecoveryRequired();
 		}
 
 		if (!this.keyManager) {
 			throw new SDKError("SDK not initialized", "NOT_INITIALIZED");
 		}
 
-		const keyShare = await this.keyManager.getKeyShare();
-		if (!keyShare) {
-			throw new SDKError("No Pedersen key share found", "NO_KEY_SHARE");
+		let keyShare = await this.keyManager.getKeyShare();
+		if (keyShare) {
+			return hexToScalar(keyShare.privateShare);
 		}
 
-		return hexToScalar(keyShare.privateShare);
+		const restored = await this.restoreClientShareFromServer();
+		if (restored) {
+			keyShare = await this.keyManager.getKeyShare();
+			if (keyShare) {
+				return hexToScalar(keyShare.privateShare);
+			}
+		}
+
+		return this.throwRecoveryRequired();
+	}
+
+	private async throwRecoveryRequired(): Promise<never> {
+		const options = await this.checkRecoveryOptions();
+
+		throw new WalletError(
+			options.hasBackup
+				? "Client key share not found but server backup exists. Restoration failed."
+				: "Client key share not found. No server backup available.",
+			"RECOVERY_REQUIRED",
+			undefined,
+			{ hasBackup: options.hasBackup },
+		);
+	}
+
+	private _encryptionSeed: string | null = null;
+
+	private getShareEncryptionKey(seed?: string): string {
+		if (!this._user?.id) {
+			throw new SDKError("User not authenticated", "NOT_AUTHENTICATED");
+		}
+		const effectiveSeed = seed ?? this._encryptionSeed;
+		if (effectiveSeed) {
+			return `nero:client-share:${this._user.id}:${effectiveSeed}`;
+		}
+		return `nero:client-share:${this._user.id}`;
+	}
+
+	private async fetchOrCreateEncryptionSeed(): Promise<string | undefined> {
+		if (this._encryptionSeed) {
+			return this._encryptionSeed;
+		}
+		try {
+			const response = await this.apiClient.wallet.getClientShare();
+			if (response?.encryptionSeed) {
+				this._encryptionSeed = response.encryptionSeed;
+				return response.encryptionSeed;
+			}
+		} catch {}
+		return undefined;
+	}
+
+	private async backupClientShareToServer(
+		overrideShare?: unknown,
+	): Promise<void> {
+		try {
+			const protocol = this._protocol === "dkls" ? "dkls" : "pedersen-dkg-v1";
+			let shareData: string | null = null;
+
+			if (overrideShare) {
+				shareData = JSON.stringify(overrideShare);
+			} else if (this._protocol === "dkls") {
+				const dklsClient = this.getOrCreateDKLSClient();
+				const cached = dklsClient.getCachedKeyShare();
+				if (cached) {
+					shareData = JSON.stringify(cached);
+				} else {
+					const loaded = await dklsClient.loadKeyShare();
+					if (loaded) {
+						shareData = JSON.stringify(loaded);
+					}
+				}
+			} else if (this.keyManager) {
+				const keyShare = await this.keyManager.getKeyShare();
+				if (keyShare) {
+					shareData = JSON.stringify(keyShare);
+				}
+			}
+
+			if (!shareData) {
+				console.warn("[NERO SDK] No client share data available for backup");
+				return;
+			}
+
+			const seed = await this.fetchOrCreateEncryptionSeed();
+			const encrypted = await encryptWithPassword(
+				shareData,
+				this.getShareEncryptionKey(seed),
+			);
+
+			const result = await this.apiClient.wallet.storeClientShare(
+				JSON.stringify(encrypted),
+				protocol as "dkls" | "pedersen-dkg-v1",
+			);
+			if (result.encryptionSeed) {
+				this._encryptionSeed = result.encryptionSeed;
+			}
+		} catch (err) {
+			console.error("[NERO SDK] Client share backup failed:", err);
+		}
+	}
+
+	private async restoreClientShareFromServer(): Promise<boolean> {
+		try {
+			const response = await this.apiClient.wallet.getClientShare();
+			if (!response.found || !response.encryptedShare) {
+				return false;
+			}
+
+			if (response.encryptionSeed) {
+				this._encryptionSeed = response.encryptionSeed;
+			}
+
+			const encrypted = JSON.parse(response.encryptedShare);
+			const shareJson = await decryptWithPassword(
+				encrypted,
+				this.getShareEncryptionKey(response.encryptionSeed),
+			);
+			const shareData = JSON.parse(shareJson);
+
+			if (this._protocol === "dkls") {
+				const dklsClient = this.getOrCreateDKLSClient();
+				await dklsClient.storeRestoredKeyShare(shareData);
+				const loaded = await dklsClient.loadKeyShare();
+				return loaded !== null;
+			}
+
+			if (this.keyManager) {
+				await this.keyManager.storeKeyShare(shareData);
+				return true;
+			}
+
+			return false;
+		} catch (err) {
+			console.warn(
+				"[NERO SDK] Client share restore failed:",
+				err instanceof Error ? err.message : err,
+			);
+			return false;
+		}
+	}
+
+	private async checkRecoveryOptions(): Promise<{
+		hasBackup: boolean;
+	}> {
+		let hasBackup = false;
+
+		try {
+			const response = await this.apiClient.wallet.getClientShare();
+			hasBackup = !!response?.found;
+		} catch {
+			/* check failed, not critical */
+		}
+
+		return { hasBackup };
 	}
 
 	private reconstructSecret(
@@ -639,6 +827,8 @@ export class NeroMpcSDK {
 
 		dkgClient.cleanup();
 
+		await this.backupClientShareToServer();
+
 		await this.connect();
 
 		this._cachedWalletInfo = await this._wallet.getWalletInfo();
@@ -648,9 +838,22 @@ export class NeroMpcSDK {
 	private async generateWalletDKLS(): Promise<WalletInfo> {
 		const dklsClient = this.getOrCreateDKLSClient();
 
-		const result = await dklsClient.executeKeygen();
+		let result: { walletAddress: string; jointPublicKey: string };
+		try {
+			result = await dklsClient.executeKeygen();
+		} catch (keygenError) {
+			const computedShare = dklsClient.getLastComputedKeyShare();
+			if (computedShare) {
+				await this.backupClientShareToServer(computedShare);
+			}
+			dklsClient.clearLastComputedKeyShare();
+			throw keygenError;
+		}
 
 		this._dklsWalletAddress = result.walletAddress;
+
+		await this.backupClientShareToServer();
+		dklsClient.clearLastComputedKeyShare();
 
 		await this.connect();
 
@@ -956,13 +1159,6 @@ export class NeroMpcSDK {
 				chainId?: number;
 			};
 
-			// Use ethers Transaction to compute unsignedHash
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const { Transaction } = require("ethers") as {
-				Transaction: {
-					from: (data: Record<string, unknown>) => { unsignedHash: string };
-				};
-			};
 			const unsignedTx = Transaction.from({
 				to: txRequest.to,
 				value: txRequest.value ?? "0x0",

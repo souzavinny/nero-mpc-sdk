@@ -138,6 +138,26 @@ export class WalletAPI {
 		return this.request("GET", `/api/v2/wallet/signing/${sessionId}`);
 	}
 
+	async storeClientShare(
+		encryptedShare: string,
+		protocol: "pedersen-dkg-v1" | "dkls" = "dkls",
+	): Promise<{ stored: boolean; encryptionSeed?: string }> {
+		return this.request("PUT", "/api/v2/wallet/client-share", {
+			encryptedShare,
+			protocol,
+		});
+	}
+
+	async getClientShare(): Promise<{
+		found: boolean;
+		encryptedShare?: string;
+		protocol?: string;
+		updatedAt?: string;
+		encryptionSeed?: string;
+	}> {
+		return this.request("GET", "/api/v2/wallet/client-share");
+	}
+
 	async initiateDeviceVerification(
 		fingerprint: DeviceFingerprint,
 		deviceName?: string,

@@ -5,6 +5,9 @@
  * Communicates with the V2 DKLS API endpoints.
  */
 
+import { keccak_256 } from "@noble/hashes/sha3";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
+import { TypedDataEncoder } from "ethers";
 import type { APIClient } from "../../transport/api-client";
 import { SDKError, type StorageAdapter } from "../../types";
 import {
@@ -44,6 +47,7 @@ export class DKLSClient {
 	private mtaState: MtAClientState | null = null;
 	private keyShare: DKLSKeyShare | null = null;
 	private dkgSessionId: string | null = null;
+	private lastComputedKeyShare: DKLSKeyShare | null = null;
 
 	constructor(config: DKLSClientConfig) {
 		this.apiClient = config.apiClient;
@@ -78,6 +82,18 @@ export class DKLSClient {
 		await this.storage.set("dkls_key_share", JSON.stringify(stored));
 		this.keyShare = keyShare;
 		this.dkgSessionId = dkgSessionId;
+	}
+
+	getCachedKeyShare(): DKLSKeyShare | null {
+		return this.keyShare;
+	}
+
+	getLastComputedKeyShare(): DKLSKeyShare | null {
+		return this.lastComputedKeyShare;
+	}
+
+	async storeRestoredKeyShare(keyShare: DKLSKeyShare): Promise<void> {
+		await this.saveKeyShare(keyShare, "restored");
 	}
 
 	async hasKeyShare(): Promise<boolean> {
@@ -117,6 +133,8 @@ export class DKLSClient {
 				this.keygenState,
 				commitmentResult.backendPublicShare,
 			);
+
+			this.lastComputedKeyShare = keyShare;
 
 			const completeResult = await this.apiClient.dkls.keygenComplete(
 				initResult.sessionId,
@@ -272,9 +290,6 @@ export class DKLSClient {
 			);
 		}
 
-		const { keccak_256 } = require("@noble/hashes/sha3");
-		const { bytesToHex, utf8ToBytes } = require("@noble/hashes/utils");
-
 		const prefix = `\x19Ethereum Signed Message:\n${message.length}`;
 		const prefixedMessage = utf8ToBytes(prefix + message);
 		const messageHash = `0x${bytesToHex(keccak_256(prefixedMessage))}`;
@@ -299,7 +314,6 @@ export class DKLSClient {
 			);
 		}
 
-		const { TypedDataEncoder } = require("ethers");
 		const messageHash = TypedDataEncoder.hash(domain, types, value);
 
 		return this.sign({
@@ -309,10 +323,15 @@ export class DKLSClient {
 		});
 	}
 
+	clearLastComputedKeyShare(): void {
+		this.lastComputedKeyShare = null;
+	}
+
 	async clearKeyShare(): Promise<void> {
 		await this.storage.delete("dkls_key_share");
 		this.keyShare = null;
 		this.dkgSessionId = null;
+		this.lastComputedKeyShare = null;
 	}
 }
 
