@@ -307,6 +307,12 @@ export class NeroMpcSDK {
 		state: string,
 		redirectUri?: string,
 	): Promise<{ user: User; requiresDKG: boolean; walletExists?: boolean }> {
+		if (!this.deviceKey) {
+			this.deviceKey = await this.loadOrGenerateDeviceKey();
+			if (!this.config.deviceId) {
+				this.apiClient.setDeviceId(this.deviceKey);
+			}
+		}
 		const fingerprint = this.getDeviceFingerprint();
 
 		const result = await this.apiClient.auth.handleOAuthCallback(
@@ -1270,7 +1276,31 @@ export class NeroMpcSDK {
 		verificationRequired: boolean;
 		expiresAt?: string;
 	}> {
-		return this.apiClient.recovery.setup(methodType, config, encryptedData);
+		let shareData = encryptedData;
+		if (!shareData) {
+			shareData = await this.getSerializedClientShare();
+		}
+		return this.apiClient.recovery.setup(methodType, config, shareData);
+	}
+
+	private async getSerializedClientShare(): Promise<string | undefined> {
+		let raw: string | null = null;
+
+		if (this._protocol === "dkls") {
+			const dklsClient = this.getOrCreateDKLSClient();
+			const cached = dklsClient.getCachedKeyShare();
+			if (cached) {
+				raw = JSON.stringify(cached);
+			} else {
+				const loaded = await dklsClient.loadKeyShare();
+				if (loaded) raw = JSON.stringify(loaded);
+			}
+		} else if (this.keyManager) {
+			const keyShare = await this.keyManager.getKeyShare();
+			if (keyShare) raw = JSON.stringify(keyShare);
+		}
+
+		return raw ?? undefined;
 	}
 
 	async listRecoveryMethods(
@@ -1459,6 +1489,7 @@ export class NeroMpcSDK {
 		return {
 			userAgent:
 				typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
+			additionalData: this.deviceKey ?? undefined,
 		};
 	}
 

@@ -11,21 +11,21 @@ export class UserAPI {
 	constructor(private request: RequestFn) {}
 
 	async getProfile(): Promise<{ profile: UserProfile }> {
-		return this.request("GET", "/api/v2/users/profile");
+		return this.request("GET", "/api/v2/user/profile");
 	}
 
 	async updateProfile(data: {
 		displayName?: string;
 		profilePicture?: string;
 	}): Promise<{ profile: Partial<UserProfile> }> {
-		return this.request("PUT", "/api/v2/users/profile", data);
+		return this.request("PUT", "/api/v2/user/profile", data);
 	}
 
 	async deleteAccount(
 		confirmation: string,
 		password?: string,
 	): Promise<{ message: string }> {
-		return this.request("DELETE", "/api/v2/users/profile", {
+		return this.request("DELETE", "/api/v2/user/profile", {
 			confirmation,
 			password,
 		});
@@ -35,21 +35,21 @@ export class UserAPI {
 		sessions: unknown[];
 		message?: string;
 	}> {
-		return this.request("GET", "/api/v2/users/sessions");
+		return this.request("GET", "/api/v2/user/sessions");
 	}
 
 	async revokeSession(sessionId: string): Promise<void> {
-		return this.request("DELETE", `/api/v2/users/sessions/${sessionId}`);
+		return this.request("DELETE", `/api/v2/user/sessions/${sessionId}`);
 	}
 
 	async revokeAllSessions(): Promise<void> {
-		return this.request("DELETE", "/api/v2/users/sessions");
+		return this.request("DELETE", "/api/v2/user/sessions");
 	}
 
 	async getDevices(): Promise<{
 		devices: TrustedDevice[];
 	}> {
-		return this.request("GET", "/api/v2/users/devices");
+		return this.request("GET", "/api/v2/user/devices");
 	}
 
 	async initiateDeviceVerification(deviceName?: string): Promise<{
@@ -58,7 +58,7 @@ export class UserAPI {
 		emailSent: string;
 		message: string;
 	}> {
-		return this.request("POST", "/api/v2/users/devices/verify/initiate", {
+		return this.request("POST", "/api/v2/user/devices/verify/initiate", {
 			deviceName,
 		});
 	}
@@ -71,7 +71,7 @@ export class UserAPI {
 		trustLevel: string;
 		message: string;
 	}> {
-		return this.request("POST", "/api/v2/users/devices/verify/complete", {
+		return this.request("POST", "/api/v2/user/devices/verify/complete", {
 			verificationId,
 			code,
 		});
@@ -81,7 +81,7 @@ export class UserAPI {
 		deviceId: string,
 		deviceName?: string,
 	): Promise<{ deviceId: string; message: string }> {
-		return this.request("POST", `/api/v2/users/devices/${deviceId}/trust`, {
+		return this.request("POST", `/api/v2/user/devices/${deviceId}/trust`, {
 			deviceName,
 		});
 	}
@@ -89,19 +89,19 @@ export class UserAPI {
 	async removeDevice(
 		deviceId: string,
 	): Promise<{ deviceId: string; message: string }> {
-		return this.request("DELETE", `/api/v2/users/devices/${deviceId}`);
+		return this.request("DELETE", `/api/v2/user/devices/${deviceId}`);
 	}
 
 	async getSecurity(): Promise<{
 		securitySettings: SecuritySettings;
 	}> {
-		return this.request("GET", "/api/v2/users/security");
+		return this.request("GET", "/api/v2/user/security");
 	}
 
 	async updateSecurity(
 		settings: Record<string, unknown>,
 	): Promise<Record<string, unknown>> {
-		return this.request("PUT", "/api/v2/users/security", settings);
+		return this.request("PUT", "/api/v2/user/security", settings);
 	}
 
 	async changePassword(
@@ -109,7 +109,7 @@ export class UserAPI {
 		newPassword: string,
 		confirmPassword: string,
 	): Promise<Record<string, unknown>> {
-		return this.request("POST", "/api/v2/users/security/change-password", {
+		return this.request("POST", "/api/v2/user/security/change-password", {
 			currentPassword,
 			newPassword,
 			confirmPassword,
@@ -138,7 +138,7 @@ export class UserAPI {
 		if (params?.from) query.set("from", params.from);
 		if (params?.to) query.set("to", params.to);
 		const qs = query.toString();
-		return this.request("GET", `/api/v2/users/activity${qs ? `?${qs}` : ""}`);
+		return this.request("GET", `/api/v2/user/activity${qs ? `?${qs}` : ""}`);
 	}
 
 	async getSecurityEvents(params?: {
@@ -159,7 +159,7 @@ export class UserAPI {
 		const qs = query.toString();
 		return this.request(
 			"GET",
-			`/api/v2/users/security-events${qs ? `?${qs}` : ""}`,
+			`/api/v2/user/security-events${qs ? `?${qs}` : ""}`,
 		);
 	}
 
@@ -172,19 +172,19 @@ export class UserAPI {
 		if (includeWallet !== undefined)
 			query.set("includeWallet", String(includeWallet));
 		const qs = query.toString();
-		return this.request("GET", `/api/v2/users/export${qs ? `?${qs}` : ""}`);
+		return this.request("GET", `/api/v2/user/export${qs ? `?${qs}` : ""}`);
 	}
 
 	async getNotifications(): Promise<{
 		preferences: NotificationPreferences;
 	}> {
-		return this.request("GET", "/api/v2/users/notifications");
+		return this.request("GET", "/api/v2/user/notifications");
 	}
 
 	async updateNotifications(prefs: Partial<NotificationPreferences>): Promise<{
 		preferences: NotificationPreferences;
 		message: string;
 	}> {
-		return this.request("PUT", "/api/v2/users/notifications", prefs);
+		return this.request("PUT", "/api/v2/user/notifications", prefs);
 	}
 }
