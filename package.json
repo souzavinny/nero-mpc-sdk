@@ -107,6 +107,7 @@
     "@biomejs/biome": "^1.9.4",
     "@noble/curves": "^1.4.0",
     "@noble/hashes": "^1.4.0",
+    "ethers": "^6.0.0",
     "@testing-library/react": "^14.3.1",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.0",
